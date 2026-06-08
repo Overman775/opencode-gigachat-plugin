@@ -31,7 +31,7 @@ The plugin resolves protocol incompatibilities between OpenAI and GigaChat, mana
 
 ### Option A: Download compiled plugin from GitHub Releases (Recommended)
 
-1. Download the latest compiled plugin file `gigachat-plugin.js` from the [GitHub Releases](https://github.com/your-username/opencode-gigachat-plugin/releases) page.
+1. Download the latest compiled plugin file `gigachat-plugin.js` from the [GitHub Releases](https://github.com/Overman775/opencode-gigachat-plugin/releases) page.
 2. Copy the downloaded file to your OpenCode plugins directory:
 
    ```bash
@@ -64,7 +64,7 @@ Build the opencode-gigachat-plugin and configure it in ~/.config/opencode/openco
 1. **Clone and build the plugin**:
 
     ```bash
-    git clone https://github.com/your-username/opencode-gigachat-plugin.git
+    git clone https://github.com/Overman775/opencode-gigachat-plugin.git
     cd opencode-gigachat-plugin
     npm install
     npm run build
@@ -269,6 +269,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### Disclaimer
 * This project is an experimental proof-of-concept (PoC) created purely for research purposes. Further maintenance or active development is not planned. If you urgently need to reach out regarding critical fixes or adjustments, feel free to contact the author on Telegram (handles can be found in the GitHub profile).
-* During the design of the translation layer and function calling mechanics, we referenced and drew inspiration from the official SDK structures and client implementations found in the [ai-forever/gigachat](https://github.com/ai-forever/gigachat) repository.
+* During the design of the translation layer and function calling mechanics, I referenced and drew inspiration from the official SDK structures and client implementations found in the [ai-forever/gigachat](https://github.com/ai-forever/gigachat) repository.
 * This project is an independent open-source contribution and is not affiliated with Sberbank or the GigaChat development team.
 * "GigaChat", "GigaCode", and "Sber" are registered trademarks of PJSC Sberbank.

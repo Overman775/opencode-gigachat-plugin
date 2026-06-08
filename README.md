@@ -31,7 +31,7 @@
 
 ### Вариант А: Установка готового файла сборки из GitHub Releases (Рекомендуется)
 
-1. Скачайте последнюю версию скомпилированного плагина `gigachat-plugin.js` со страницы [GitHub Releases](https://github.com/your-username/opencode-gigachat-plugin/releases).
+1. Скачайте последнюю версию скомпилированного плагина `gigachat-plugin.js` со страницы [GitHub Releases](https://github.com/Overman775/opencode-gigachat-plugin/releases).
 2. Скопируйте скачанный файл в папку плагинов OpenCode:
 
    ```bash
@@ -64,7 +64,7 @@
 1. **Клонирование и сборка плагина**:
 
     ```bash
-    git clone https://github.com/your-username/opencode-gigachat-plugin.git
+    git clone https://github.com/Overman775/opencode-gigachat-plugin.git
     cd opencode-gigachat-plugin
     npm install
     npm run build
@@ -294,6 +294,6 @@ rm "$HOME/.config/opencode/certs/root.crt" "$HOME/.config/opencode/certs/sub.crt
 ### Дисклеймер
 
 * Этот проект является экспериментальной разработкой, созданной исключительно в рамках исследования и в качестве Proof of Concept (PoC). Дальнейшая поддержка или развитие проекта не планируются. Если вам крайне необходимо связаться по поводу исправлений или доработок проекта, пишите в Telegram (контакты автора можно найти в его профиле на GitHub).
-* При проектировании трансляционного слоя и логики вызова функций (Function Calling) мы во многом опирались на технические решения и код официальных клиентов из репозитория [ai-forever/gigachat](https://github.com/ai-forever/gigachat).
+* При проектировании трансляционного слоя и логики вызова функций (Function Calling) я во многом опирался на технические решения и код официальных клиентов из репозитория [ai-forever/gigachat](https://github.com/ai-forever/gigachat).
 * Проект является независимым решением с открытым исходным кодом и не аффилирован со Сбербанком или командой разработки GigaChat.
 * Названия "GigaChat", "GigaCode" и "Сбер" являются зарегистрированными товарными знаками ПАО Сбербанк.
