@@ -1,0 +1,44 @@
+name: Release to GitHub
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build and Release Asset
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run compilation build
+        run: npm run build
+
+      - name: Run Vitest tests
+        run: npm run test
+
+      - name: Prepare release asset
+        run: |
+          mkdir -p release-asset
+          cp dist/index.js release-asset/gigachat-plugin.js
+
+      - name: Upload asset to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-asset/gigachat-plugin.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
