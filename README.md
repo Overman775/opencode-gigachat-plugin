@@ -277,6 +277,7 @@ rm "$HOME/.config/opencode/certs/root.crt" "$HOME/.config/opencode/certs/sub.crt
 
 ## Документация
 
+* [Статья-разбор эксперимента](docs/HABR-ARTICLE.md) — личная история о том, как плагин появился, где OpenAI-like API оказался не plug-and-play и какие ограничения всплыли в agent workflow.
 * [Архитектура плагина](docs/ARCHITECTURE.md) — внутреннее устройство и жизненный цикл событий.
 * [Настройка конфигурации](docs/CONFIGURATION.md) — подробные параметры настроек и файлов конфигурации.
 * [Варианты моделей и рассуждения](docs/MODEL-VARIANTS.md) — глубина мыслей и бюджетирование токенов.
