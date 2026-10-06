@@ -34,5 +34,5 @@ jobs:
       - name: Run Vitest Unit Tests
         run: npm run test
 
-      - name: Verify standalone file and modular ZIP
+      - name: Verify the installable plugin without npm dependencies
         run: npm run test:release

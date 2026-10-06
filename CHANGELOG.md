@@ -3,6 +3,17 @@
 This file records changes to the project.
 It uses [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-10-06
+
+### Changed
+
+- Releases now provide one ready-to-use `gigachat-plugin.js`; the installation ZIP is no longer published.
+- Updated installation and upgrade instructions in both READMEs.
+
+### Fixed
+
+- Included project and third-party licenses in the JS file.
+
 ## [1.0.1] - 2026-10-06
 
 ### Added

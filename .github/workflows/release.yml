@@ -25,21 +25,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build standalone file and modular ZIP
+      - name: Build the installable plugin
         run: npm run build:release
 
       - name: Run Vitest tests
         run: npm run test
 
-      - name: Verify both release formats
+      - name: Verify the installable plugin without npm dependencies
         run: npm run test:release
 
       - name: Upload asset to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/gigachat-plugin.zip
-            dist/gigachat-plugin.js
+          files: dist/gigachat-plugin.js
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

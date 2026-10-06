@@ -15,49 +15,29 @@ It obtains an OAuth token and verifies TLS certificates for requests to Sber.
 
 ## Installation and Build
 
-You need OpenCode to install the plugin. You need Node.js 18 or later to build it from source.
+You need OpenCode and the ready-to-use `gigachat-plugin.js` file.
+The file includes the plugin and its dependencies. You do not need to build it or run `npm install`.
 
-### Install the ZIP
+### Install the plugin
 
-Use `gigachat-plugin.zip`. The archive contains separate modules and bundled dependencies.
-
-> The published `v1.0.0` release contains an incomplete three-line JS file.
-> Use `v1.0.1` or later.
-
-1. Download `gigachat-plugin.zip` from [release v1.0.1](https://github.com/Overman775/opencode-gigachat-plugin/releases/tag/v1.0.1).
-2. Close OpenCode.
-3. Open a terminal in the directory that contains the archive.
+1. Close OpenCode.
+2. Download [gigachat-plugin.js](https://github.com/Overman775/opencode-gigachat-plugin/releases/download/v1.0.2/gigachat-plugin.js) from [release v1.0.2](https://github.com/Overman775/opencode-gigachat-plugin/releases/tag/v1.0.2).
+3. Open a terminal in the directory that contains the downloaded file.
 4. Create the plugins directory:
 
    ```bash
    mkdir -p "$HOME/.config/opencode/plugins"
    ```
 
-5. Extract the entire archive:
+5. Copy the file:
 
    ```bash
-   unzip -o gigachat-plugin.zip -d "$HOME/.config/opencode/plugins"
+   cp gigachat-plugin.js "$HOME/.config/opencode/plugins/gigachat-plugin.js"
    ```
 
-The installed files must have this structure:
-
-```text
-~/.config/opencode/plugins/
-├── README.md
-├── README.en.md
-├── LICENSE
-├── docs/
-├── gigachat-plugin.js
-└── gigachat-plugin/
-    ├── index.js
-    ├── plugin.js
-    ├── plugin/       # requests, messages, tools and streams
-    ├── gigacode/     # authentication, certificates and logs
-    └── vendor/       # dependencies and licenses
-```
-
-Keep `gigachat-plugin.js` next to the `gigachat-plugin/` directory.
-OpenCode loads the entry file at startup. You do not need to run `npm install` for the release.
+The installed plugin is at `~/.config/opencode/plugins/gigachat-plugin.js`.
+OpenCode loads it at startup.
+The `Source code` archives that GitHub shows are for development only.
 
 If the `plugin` array contains a previous GigaChat plugin, remove that entry.
 Keep the entries for other plugins.
@@ -144,31 +124,20 @@ If the request fails, see [Troubleshooting](docs/TROUBLESHOOTING.md).
 ### Update
 
 1. Close OpenCode.
-2. Extract the entire new ZIP over the previous installation.
-3. Start OpenCode.
+2. Download `gigachat-plugin.js` from the [latest release](https://github.com/Overman775/opencode-gigachat-plugin/releases/latest).
+3. Replace `~/.config/opencode/plugins/gigachat-plugin.js` with the downloaded file.
+4. Start OpenCode.
 
-The plugin files are separate from the stored key and configuration. Both READMEs are in the archive.
+The key and configuration are stored separately from the plugin file.
+If you installed the ZIP from `v1.0.1`, first replace the JS file.
+The `~/.config/opencode/plugins/gigachat-plugin/` directory is no longer needed.
+You can delete that directory. Keep the other plugins.
 
-### Install one JS file
+## Development
 
-The separate `gigachat-plugin.js` release asset contains all modules and dependencies.
-
-1. Create the plugins directory:
-
-   ```bash
-   mkdir -p "$HOME/.config/opencode/plugins"
-   ```
-
-2. Copy the file in place of the ZIP entry file:
-
-   ```bash
-   cp gigachat-plugin.js "$HOME/.config/opencode/plugins/gigachat-plugin.js"
-   ```
-
-3. Configure the provider and log in with the instructions above.
-
-The build generates the file without minification and includes source module paths.
-Use the ZIP to read separate modules. Edit `src/` for development.
+The source code in `src/` is split into modules.
+The build generates the installable file without minification and includes source module paths.
+You need Node.js 18 or later to build it from source.
 
 ### Build from source
 
@@ -196,7 +165,7 @@ Use the ZIP to read separate modules. Edit `src/` for development.
    npm run build:release
    ```
 
-5. Test the code and release files:
+5. Test the code and release file:
 
    ```bash
    npm test
@@ -205,9 +174,7 @@ Use the ZIP to read separate modules. Edit `src/` for development.
 
 | Output | Purpose |
 | --- | --- |
-| `dist/gigachat-plugin.zip` | Modular archive for installation |
-| `dist/gigachat-plugin.js` | Single file for installation |
-| `dist/release/` | Extracted archive |
+| `dist/gigachat-plugin.js` | Ready-to-use file for installation |
 | `dist/index.js` | Development entry; requires the other `dist/` modules and npm dependencies |
 
 Builds and updates replace changes to generated files.

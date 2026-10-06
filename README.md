@@ -15,49 +15,29 @@
 
 ## Установка и сборка
 
-Для установки нужен OpenCode. Для сборки из исходников нужен Node.js 18 или новее.
+Для установки нужен OpenCode и готовый файл `gigachat-plugin.js`.
+Файл содержит код плагина и его зависимости. Сборка и `npm install` не нужны.
 
-### Установка ZIP
+### Установка плагина
 
-Рекомендуемый формат: `gigachat-plugin.zip`. Архив содержит отдельные модули и готовые зависимости.
-
-> Релиз `v1.0.0` содержит неполный JS-файл из трёх строк.
-> Используйте `v1.0.1` или новее.
-
-1. Скачайте `gigachat-plugin.zip` из [релиза v1.0.1](https://github.com/Overman775/opencode-gigachat-plugin/releases/tag/v1.0.1).
-2. Закройте OpenCode.
-3. Откройте терминал в папке со скачанным архивом.
+1. Закройте OpenCode.
+2. Скачайте [gigachat-plugin.js](https://github.com/Overman775/opencode-gigachat-plugin/releases/download/v1.0.2/gigachat-plugin.js) из [релиза v1.0.2](https://github.com/Overman775/opencode-gigachat-plugin/releases/tag/v1.0.2).
+3. Откройте терминал в папке со скачанным файлом.
 4. Создайте папку плагинов:
 
    ```bash
    mkdir -p "$HOME/.config/opencode/plugins"
    ```
 
-5. Распакуйте весь архив:
+5. Скопируйте файл:
 
    ```bash
-   unzip -o gigachat-plugin.zip -d "$HOME/.config/opencode/plugins"
+   cp gigachat-plugin.js "$HOME/.config/opencode/plugins/gigachat-plugin.js"
    ```
 
-После распаковки структура должна быть такой:
-
-```text
-~/.config/opencode/plugins/
-├── README.md
-├── README.en.md
-├── LICENSE
-├── docs/
-├── gigachat-plugin.js
-└── gigachat-plugin/
-    ├── index.js
-    ├── plugin.js
-    ├── plugin/       # запросы, сообщения, инструменты и потоки
-    ├── gigacode/     # авторизация, сертификаты и журнал
-    └── vendor/       # зависимости и лицензии
-```
-
-Сохраняйте `gigachat-plugin.js` рядом с папкой `gigachat-plugin/`.
-OpenCode загружает входной файл при запуске. Устанавливать зависимости через `npm install` не требуется.
+Установленный плагин находится в `~/.config/opencode/plugins/gigachat-plugin.js`.
+OpenCode загружает его при запуске.
+Архивы `Source code`, которые показывает GitHub, нужны только для разработки.
 
 Если в массиве `plugin` есть прежняя копия GigaChat-плагина, удалите её запись.
 Сохраните записи остальных плагинов.
@@ -144,31 +124,19 @@ OpenCode сохранит ключ и scope в своём хранилище а�
 ### Обновление
 
 1. Закройте OpenCode.
-2. Распакуйте новый ZIP целиком поверх прежней установки.
-3. Запустите OpenCode.
+2. Скачайте `gigachat-plugin.js` из [последнего релиза](https://github.com/Overman775/opencode-gigachat-plugin/releases/latest).
+3. Замените файл `~/.config/opencode/plugins/gigachat-plugin.js` скачанным файлом.
+4. Запустите OpenCode.
 
-Ключ и конфиг хранятся отдельно от файлов плагина. Этот README входит в архив.
+Ключ и конфиг хранятся отдельно от файла плагина.
+Если вы установили ZIP из `v1.0.1`, после замены JS-файла папка `~/.config/opencode/plugins/gigachat-plugin/` больше не нужна.
+Её можно удалить. Остальные плагины сохраняйте.
 
-### Установка одним JS-файлом
+## Разработка
 
-Отдельный файл `gigachat-plugin.js` из релиза содержит все модули и зависимости.
-
-1. Создайте папку плагинов:
-
-   ```bash
-   mkdir -p "$HOME/.config/opencode/plugins"
-   ```
-
-2. Скопируйте файл вместо входного файла из ZIP:
-
-   ```bash
-   cp gigachat-plugin.js "$HOME/.config/opencode/plugins/gigachat-plugin.js"
-   ```
-
-3. Настройте провайдера и выполните вход по инструкции выше.
-
-Одиночный файл генерируется без минификации и содержит пути исходных модулей.
-Для чтения отдельных модулей используйте ZIP. Для разработки изменяйте `src/`.
+Исходники в `src/` разделены на модули.
+Готовый файл генерируется без минификации и содержит пути исходных модулей.
+Для сборки из исходников нужен Node.js 18 или новее.
 
 ### Сборка из исходников
 
@@ -196,7 +164,7 @@ OpenCode сохранит ключ и scope в своём хранилище а�
    npm run build:release
    ```
 
-5. Проверьте код и готовые сборки:
+5. Проверьте код и готовый файл:
 
    ```bash
    npm test
@@ -205,9 +173,7 @@ OpenCode сохранит ключ и scope в своём хранилище а�
 
 | Результат | Назначение |
 | --- | --- |
-| `dist/gigachat-plugin.zip` | Архив с модулями для установки |
-| `dist/gigachat-plugin.js` | Одиночный файл для установки |
-| `dist/release/` | Распакованная версия архива |
+| `dist/gigachat-plugin.js` | Готовый файл для установки |
 | `dist/index.js` | Входной файл для разработки; требует остальные модули `dist/` и npm-зависимости |
 
 Сборка и обновление заменяют изменения в готовых файлах.
