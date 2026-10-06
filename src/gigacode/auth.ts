@@ -1,10 +1,10 @@
-import axios from "axios";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "node:crypto";
+import { default as axios } from "axios";
 
-import { 
-  GIGACHAT_OAUTH_URL, 
-  DEFAULT_CA_BUNDLE_FILE, 
-  REFRESH_BUFFER_SECONDS 
+import {
+  GIGACHAT_OAUTH_URL,
+  DEFAULT_CA_BUNDLE_FILE,
+  REFRESH_BUFFER_SECONDS,
 } from "../constants.js";
 import { getHttpsAgent, shouldVerifySsl } from "./certs.js";
 import { logger } from "./logger.js";
@@ -22,21 +22,36 @@ interface TokenCache {
   expiresAtSeconds: number;
 }
 
-export function sanitizeError(err: unknown): Error {
+export interface SanitizedError extends Error {
+  status?: number;
+}
+
+export function sanitizeError(err: unknown): SanitizedError {
   if (!err) return new Error("Unknown error");
-  
+  if (axios.isAxiosError(err)) {
+    for (const config of [err.config, err.response?.config]) {
+      if (!config) continue;
+      for (const key of Object.keys(config.headers ?? {})) {
+        if (key.toLowerCase() === "authorization") delete config.headers[key];
+      }
+      delete config.auth;
+    }
+  }
+
   if (err instanceof Error) {
-    const cleanError = new Error(err.message);
+    const cleanError: SanitizedError = new Error(err.message);
     cleanError.name = err.name;
     if (err.stack) {
       cleanError.stack = err.stack;
     }
     if (axios.isAxiosError(err) && err.response?.status) {
-      (cleanError as any).status = err.response.status;
+      cleanError.status = err.response.status;
+    } else if ("status" in err && typeof err.status === "number") {
+      cleanError.status = err.status;
     }
     return cleanError;
   }
-  
+
   return new Error(String(err));
 }
 
@@ -46,26 +61,35 @@ export class GigaCodeAuthManager {
   private verifySslValue: boolean | undefined = undefined;
   private caBundleValue: string | undefined = undefined;
   private tokenCache: TokenCache | null = null;
-  private refreshPromise: Promise<string> | null = null;
+  private refreshPromise: Promise<TokenCache> | null = null;
+  private credentialsVersion = 0;
 
   constructor() {
     // Check fallback to environment variables on init
     if (process.env.GIGACHAT_CREDENTIALS) {
-      this.credentialsValue = process.env.GIGACHAT_CREDENTIALS;
-      const envScope = process.env.GIGACHAT_SCOPE;
-      if (envScope === "GIGACHAT_API_B2B" || envScope === "GIGACHAT_API_CORP" || envScope === "GIGACHAT_API_PERS") {
-        this.scopeValue = envScope;
-      }
+      this.setCredentials(
+        process.env.GIGACHAT_CREDENTIALS,
+        process.env.GIGACHAT_SCOPE,
+      );
       logger.log("Loaded GigaChat credentials from environment variables.");
     }
   }
 
-  public setCredentials(credentials: string, scope?: string, verifySsl?: boolean, caBundle?: string) {
+  public setCredentials(
+    credentials: string,
+    scope?: string,
+    verifySsl?: boolean,
+    caBundle?: string,
+  ) {
     const cleanCredentials = credentials ? credentials.trim() : "";
     let cleanScope: GigaAccount["scope"] = "GIGACHAT_API_PERS";
     if (scope) {
       const trimmedScope = scope.trim();
-      if (trimmedScope === "GIGACHAT_API_B2B" || trimmedScope === "GIGACHAT_API_CORP" || trimmedScope === "GIGACHAT_API_PERS") {
+      if (
+        trimmedScope === "GIGACHAT_API_B2B" ||
+        trimmedScope === "GIGACHAT_API_CORP" ||
+        trimmedScope === "GIGACHAT_API_PERS"
+      ) {
         cleanScope = trimmedScope;
       }
     }
@@ -83,6 +107,7 @@ export class GigaCodeAuthManager {
       // Invalidate cache and promises since credentials have changed
       this.tokenCache = null;
       this.refreshPromise = null;
+      this.credentialsVersion++;
       logger.log("Dynamic credentials configured from OpenCode options.");
     }
   }
@@ -95,18 +120,21 @@ export class GigaCodeAuthManager {
   }
 
   public getCaBundle(): string {
-    return this.caBundleValue || process.env.GIGACHAT_CA_BUNDLE_FILE || DEFAULT_CA_BUNDLE_FILE;
+    return (
+      this.caBundleValue ||
+      process.env.GIGACHAT_CA_BUNDLE_FILE ||
+      DEFAULT_CA_BUNDLE_FILE
+    );
   }
 
   public getActiveAccount(): GigaAccount | null {
     if (!this.credentialsValue) {
       // Recheck environment variables in case they were set dynamically after initialization
       if (process.env.GIGACHAT_CREDENTIALS) {
-        this.credentialsValue = process.env.GIGACHAT_CREDENTIALS;
-        const envScope = process.env.GIGACHAT_SCOPE;
-        if (envScope === "GIGACHAT_API_B2B" || envScope === "GIGACHAT_API_CORP" || envScope === "GIGACHAT_API_PERS") {
-          this.scopeValue = envScope;
-        }
+        this.setCredentials(
+          process.env.GIGACHAT_CREDENTIALS,
+          process.env.GIGACHAT_SCOPE,
+        );
       }
     }
 
@@ -118,7 +146,7 @@ export class GigaCodeAuthManager {
       id: "default-gigacode-account",
       name: "GigaChat Account",
       credentials: this.credentialsValue,
-      scope: this.scopeValue
+      scope: this.scopeValue,
     };
   }
 
@@ -126,43 +154,63 @@ export class GigaCodeAuthManager {
     logger.warn(`Active account warning / rate-limit encountered: ${reason}`);
   }
 
-  public async getAccessToken(): Promise<{ token: string; account: GigaAccount }> {
-    const account = this.getActiveAccount();
-    if (!account) {
-      throw new Error(
-        "GigaChat credentials are not configured. " +
-        "Please provide 'credentials' in your 'opencode.json' under provider.gigachat.options, " +
-        "or set the GIGACHAT_CREDENTIALS environment variable."
-      );
-    }
+  public async getAccessToken(): Promise<{
+    token: string;
+    account: GigaAccount;
+  }> {
+    // A configuration change may overlap an OAuth request. Only the current
+    // configuration can populate the cache or return a token to its callers.
+    for (;;) {
+      const account = this.getActiveAccount();
+      const version = this.credentialsVersion;
+      if (!account) {
+        throw new Error(
+          "GigaChat credentials are not configured. " +
+            "Sign in with 'opencode providers login --provider \"GigaChat (Sberbank)\"', " +
+            "or set the GIGACHAT_CREDENTIALS environment variable.",
+        );
+      }
 
-    const currentSeconds = Date.now() / 1000;
+      const currentSeconds = Date.now() / 1000;
 
-    if (this.tokenCache && currentSeconds < (this.tokenCache.expiresAtSeconds - REFRESH_BUFFER_SECONDS)) {
-      return { token: this.tokenCache.accessToken, account };
-    }
+      if (
+        this.tokenCache &&
+        currentSeconds <
+          this.tokenCache.expiresAtSeconds - REFRESH_BUFFER_SECONDS
+      ) {
+        return { token: this.tokenCache.accessToken, account };
+      }
 
-    if (!this.refreshPromise) {
-      this.refreshPromise = this.fetchToken(account).finally(() => {
-        this.refreshPromise = null;
-      });
-    }
+      if (!this.refreshPromise) {
+        const refresh = this.fetchToken(account)
+          .then((cache) => {
+            if (version === this.credentialsVersion) this.tokenCache = cache;
+            return cache;
+          })
+          .finally(() => {
+            if (this.refreshPromise === refresh) this.refreshPromise = null;
+          });
+        this.refreshPromise = refresh;
+      }
 
-    try {
-      const token = await this.refreshPromise;
-      return { token, account };
-    } catch (err: unknown) {
-      throw sanitizeError(err);
+      try {
+        const cache = await this.refreshPromise;
+        if (version !== this.credentialsVersion) continue;
+        return { token: cache.accessToken, account };
+      } catch (err: unknown) {
+        if (version !== this.credentialsVersion) continue;
+        throw sanitizeError(err);
+      }
     }
   }
 
-  private async fetchToken(account: GigaAccount): Promise<string> {
+  private async fetchToken(account: GigaAccount): Promise<TokenCache> {
     const url = GIGACHAT_OAUTH_URL;
     const headers = {
       "Content-Type": "application/x-www-form-urlencoded",
-      "Accept": "application/json",
-      "Authorization": `Basic ${account.credentials}`,
-      "RqUID": uuidv4()
+      Accept: "application/json",
+      Authorization: `Basic ${account.credentials}`,
+      RqUID: randomUUID(),
     };
     const body = new URLSearchParams({ scope: account.scope }).toString();
 
@@ -181,24 +229,29 @@ export class GigaCodeAuthManager {
       const response = await axios.post<OAuthResponse>(url, body, {
         headers,
         httpsAgent,
-        timeout: 10000
+        timeout: 10000,
       });
 
       const token = response.data.access_token || response.data.tok;
-      if (!token) {
+      if (typeof token !== "string" || !token.trim()) {
         throw new Error("No token returned in auth response");
       }
       // Auto-detect units: values > 1e12 are milliseconds, otherwise seconds
-      const expiresAtRaw = response.data.expires_at !== undefined ? response.data.expires_at : (response.data.exp || 0);
-      const expiresAtSeconds = expiresAtRaw > 1e12 ? expiresAtRaw / 1000 : expiresAtRaw;
-      this.tokenCache = {
+      const expiresAtRaw =
+        response.data.expires_at !== undefined
+          ? response.data.expires_at
+          : response.data.exp || 0;
+      const expiresAtSeconds =
+        expiresAtRaw > 1e12 ? expiresAtRaw / 1000 : expiresAtRaw;
+      return {
         accessToken: token,
-        expiresAtSeconds
+        expiresAtSeconds,
       };
-
-      return token;
     } catch (err: unknown) {
-      logger.error(`Token exchange failed for ${account.name}:`, err instanceof Error ? err.message : String(err));
+      logger.error(
+        `Token exchange failed for ${account.name}:`,
+        err instanceof Error ? err.message : String(err),
+      );
       throw sanitizeError(err);
     }
   }

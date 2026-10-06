@@ -28,8 +28,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify TypeScript Compilation
-        run: npm run build
+      - name: Verify TypeScript compilation and release bundle
+        run: npm run build:release
 
       - name: Run Vitest Unit Tests
         run: npm run test
+
+      - name: Verify standalone file and modular ZIP
+        run: npm run test:release

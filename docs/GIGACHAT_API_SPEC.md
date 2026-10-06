@@ -1,42 +1,35 @@
-# Спецификация API GigaChat (GigaChat API Reference)
+# API GigaChat, который использует плагин
 
-Этот документ описывает эндпоинты, заголовки, форматы входящих запросов и ответов API GigaChat от Сбера, с которыми работает сетевой перехватчик плагина.
+Плагин работает с контрактом API v1: `messages`, `functions`, `function_call` и `functions_state_id`.
+Этот документ описывает адреса, заголовки и форматы сообщений этого контракта.
 
----
+## Адреса
 
-## 1. Базовые эндпоинты
+| Запрос | Метод и адрес |
+| --- | --- |
+| Получение токена | `POST https://ngw.devices.sberbank.ru:9443/api/v2/oauth` |
+| Ответ модели | `POST https://api.giga.chat/v1/chat/completions` |
+| Загрузка файла | `POST https://api.giga.chat/v1/files` |
 
-Плагин использует два официальных семейства endpoint-ов:
+Адреса приведены в документации Сбера: [REST API](https://developers.sber.ru/docs/ru/gigachat/api/reference/rest/gigachat-api) и [файлы](https://developers.sber.ru/docs/ru/gigachat/guides/working-with-files).
 
-*   **OAuth Авторизация (Получение токенов)**:
-    `POST https://ngw.devices.sberbank.ru:9443/api/v2/oauth`
-*   **Генерация ответов модели (Chat Completions, legacy v1 contract)**:
-    `POST https://gigachat.devices.sberbank.ru/api/v1/chat/completions`
-*   **Загрузка файлов (Vision/Вложения)**:
-    `POST https://ngw.devices.sberbank.ru:9443/api/v2/files`
+В SDK `gigacode_temp` также есть контракт v2 для `/api/v2/chat/completions`.
+Он использует `tools`, `tools_state_id`, `model_options` и массив `content[]`.
+Для перехода на v2 нужно изменить преобразование запросов, ответов и потоков.
+Замена одного URL не меняет формат сообщений.
 
-> Важно: в рабочем SDK из `gigacode_temp` есть primary v2 chat contract (`/api/v2/chat/completions`) с другой схемой (`tools`, `tools_state_id`, `model_options`, multipart `content[]`). Этот плагин сейчас использует legacy v1 contract, потому что его OpenAI-адаптер построен вокруг `messages`, `functions`, `function_call` и `functions_state_id`. Нельзя просто заменить URL на v2 без полной миграции транслятора.
+## Заголовки
 
----
+| Запрос | `Content-Type` | `Authorization` |
+| --- | --- | --- |
+| OAuth | `application/x-www-form-urlencoded` | `Basic <Base64_credentials>` |
+| Ответ модели | `application/json` | `Bearer <JWT_access_token>` |
+| Загрузка файла | `multipart/form-data` с boundary | `Bearer <JWT_access_token>` |
 
-## 2. Заголовки запросов (Required Headers)
+Плагин добавляет `RqUID: <UUIDv4>` для идентификации запроса.
+Для OAuth он также отправляет `Accept: application/json`.
 
-Для каждого запроса к API GigaChat (кроме `/oauth`) плагин автоматически генерирует и прикрепляет следующие заголовки:
-
-*   `Content-Type: application/json`
-*   `Authorization: Bearer <JWT_access_token>`
-*   `RqUID: <UUIDv4>` — уникальный идентификатор запроса (защита от повторной отправки транзакций).
-
-Для запроса `/oauth` используются заголовки:
-*   `Content-Type: application/x-www-form-urlencoded`
-*   `Authorization: Basic <Base64_credentials>`
-*   `RqUID: <UUIDv4>`
-
----
-
-## 3. Спецификация Chat Completions
-
-### Формат запроса (Request Body):
+## Запрос ответа модели
 
 ```json
 {
@@ -50,21 +43,24 @@
   "temperature": 0.7,
   "top_p": 1.0,
   "max_tokens": 1024,
-  "stream": true,
+  "stream": true
 }
 ```
 
-### Важные ограничения схемы запроса GigaChat:
-1. **Единственное системное сообщение**: В массиве `messages` может присутствовать ровно одно сообщение с ролью `system` (или `developer`). Наличие нескольких системных сообщений приведет к ошибке `422 Unprocessable Entity` от API.
-2. **Позиция системного сообщения**: Системное сообщение должно располагаться на самом первом месте в массиве `messages` (индекс 0). Любое другое расположение приведет к ошибке `422`.
-3. **Исключение неподдерживаемых параметров**: API GigaChat не поддерживает стандартные параметры OpenAI, такие как `n` (число вариантов ответа), `presence_penalty`, `frequency_penalty`, `reasoning_effort` и `thinking`. Передача данных параметров вызывает ошибку `400 Bad Request` или `422 Unprocessable Entity`. Плагин автоматически очищает и транслирует JSON-тело перед отправкой.
-4. **Валидный JSON в результатах функций**: Для сообщений с ролью `function` (результаты работы инструментов) поле `content` обязано быть валидной JSON-строкой. Если инструмент возвращает обычный текст (например, вывод bash-команды или список файлов), плагин автоматически экранирует его в JSON-строку, чтобы избежать ошибки `422 Unprocessable Entity` (`invalid function result json string`).
-5. **Санитайзинг JSON Schema**: В схемах параметров функций плагин удаляет `additionalProperties`, `$schema` и `nullable`, потому что legacy GigaChat function calling отклоняет эти поля.
+Правила для тела запроса:
 
+- Сообщение `system` может быть только одно. Если оно есть, оно должно быть первым в `messages`.
+- Плагин объединяет входящие сообщения `system` и `developer` в одно сообщение `system`.
+- Плагин не отправляет неподдерживаемые поля `n`, `presence_penalty` и `frequency_penalty`.
+- Плагин преобразует `reasoning_effort` и `thinking` в системные инструкции.
+- Поле `content` результата функции должно содержать JSON. Плагин преобразует обычный текст с помощью `JSON.stringify()`.
+- Плагин удаляет `additionalProperties`, `$schema` и `nullable` из схемы параметров функции.
 
-### Формат ответов (Response Body):
+Неверный формат может вызвать HTTP 400 или 422.
+Преобразование инструментов описано в [архитектуре](ARCHITECTURE.md#вызовы-инструментов).
 
-#### Обычный режим (Non-streaming):
+## Обычный ответ
+
 ```json
 {
   "id": "chatcmp-uuid",
@@ -89,8 +85,10 @@
 }
 ```
 
-#### Потоковый режим (Streaming - SSE):
-Сервер возвращает поток с типом контента `text/event-stream`. Каждая строка с полезными данными начинается с префикса `data: `:
+## Поток SSE
+
+Тип ответа: `text/event-stream`.
+События содержат строки `data:`. Пустая строка завершает событие.
 
 ```text
 data: {"id":"chatcmp-uuid","created":1717616800,"model":"GigaChat-Max","choices":[{"index":0,"delta":{"role":"assistant","content":"Привет"},"finish_reason":null}]}
@@ -100,18 +98,21 @@ data: {"id":"chatcmp-uuid","created":1717616800,"model":"GigaChat-Max","choices"
 data: [DONE]
 ```
 
-Если потоковый chunk содержит `delta.function_call`, плагин конвертирует его в OpenAI-compatible `delta.tool_calls`. Для одного и того же вызова внутри stream сохраняется стабильный `tool_call.id`; `functions_state_id` пробрасывается в delta, если он пришел от GigaChat.
+Плагин преобразует `delta.function_call` в `delta.tool_calls`.
+Он сохраняет один `tool_call.id` для частей одного вызова функции.
+Если ответ содержит `functions_state_id`, плагин сохраняет это поле в `delta`.
 
----
+## Загрузка изображения
 
-## 4. Загрузка вложений (Multipart Files API)
+Тело запроса `/files` имеет формат `multipart/form-data`.
 
-Для передачи мультимедиа-вложений плагин отправляет запрос на эндпоинт `/files` со следующей структурой тела (Multipart Form):
+| Поле | Содержимое |
+| --- | --- |
+| `file` | Данные изображения |
+| `purpose` | Значение `general` |
 
-*   `file` — бинарные данные изображения.
-*   `purpose` — строка назначения файла, плагин использует `"general"`.
+Пример ответа:
 
-Ответ сервера содержит идентификатор файла:
 ```json
 {
   "id": "sber-file-id-uuid-12345",
@@ -122,7 +123,7 @@ data: [DONE]
 }
 ```
 
-Этот `id` передается в массиве строк `attachments` на верхнем уровне объекта сообщения:
+Плагин передаёт значение `id` в массив `attachments` сообщения:
 
 ```json
 {
@@ -131,3 +132,6 @@ data: [DONE]
   "attachments": ["sber-file-id-uuid-12345"]
 }
 ```
+
+При корпоративном подключении плагин использует `/files` того же базового адреса, что и запрос модели.
+Если загрузка завершилась ошибкой, плагин возвращает ошибку. Он не отправляет текст без изображения.

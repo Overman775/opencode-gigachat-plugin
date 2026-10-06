@@ -2,7 +2,9 @@ import * as path from "path";
 import * as os from "os";
 
 export const GIGACHAT_OAUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
-export const GIGACHAT_COMPLETIONS_URL = "https://gigachat.devices.sberbank.ru/api/v1/chat/completions";
+export const GIGACHAT_API_URL = "https://api.giga.chat/v1";
+export const GIGACHAT_COMPLETIONS_URL = `${GIGACHAT_API_URL}/chat/completions`;
+export const GIGACHAT_FILES_URL = `${GIGACHAT_API_URL}/files`;
 
 export const CONFIG_DIR = path.join(os.homedir(), ".config", "opencode");
 

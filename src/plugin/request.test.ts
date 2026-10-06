@@ -1,300 +1,28 @@
+import { Readable } from "node:stream";
+import { default as axios, AxiosError, AxiosHeaders } from "axios";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { Readable } from "stream";
-import { translateOpenAiToGigaChat, transformRequestOptions, setupGlobalFetchInterceptor, registerGigaEndpoint, getToolAlias, translateGigaChatToOpenAi } from "./request.js";
-import { BUILTIN_CA_BUNDLE } from "../gigacode/certs.js";
-import axios from "axios";
-
-describe("GigaChat Request Translator", () => {
-  it("should translate basic OpenAI chat completion request to GigaChat format", async () => {
-    const openAiRequest = {
-      model: "GigaChat-Max",
-      messages: [
-        { role: "user", content: "Hello world" }
-      ],
-      temperature: 0.8,
-      stream: true,
-      max_tokens: 512
-    };
-
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", true, "mock-ca");
-
-    expect(gigaRequest.model).toBe("GigaChat-Max");
-    expect(gigaRequest.messages).toHaveLength(1);
-    expect(gigaRequest.messages[0]).toEqual({
-      role: "user",
-      content: "Hello world"
-    });
-    expect(gigaRequest.temperature).toBe(0.8);
-    expect(gigaRequest.stream).toBe(true);
-    expect(gigaRequest.max_tokens).toBe(512);
-  });
-
-  it("should fall back to GigaChat-Max model name if undefined", async () => {
-    const openAiRequest = {
-      messages: [{ role: "user", content: "Test model name fallback" }]
-    };
-
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", true, "mock-ca");
-    expect(gigaRequest.model).toBe("GigaChat-Max");
-  });
-
-  it("should map GigaChat-2-Lite model to GigaChat-2", async () => {
-    const openAiRequest = {
-      model: "GigaChat-2-Lite",
-      messages: [{ role: "user", content: "Test model name mapping" }]
-    };
-
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", true, "mock-ca");
-    expect(gigaRequest.model).toBe("GigaChat-2");
-  });
-
-  it("should translate reasoning_effort parameter by injecting a system instruction", async () => {
-    const openAiRequest = {
-      messages: [{ role: "user", content: "Thinking test" }],
-      reasoning_effort: "HIGH"
-    };
-
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", true, "mock-ca");
-    expect(gigaRequest.reasoning_effort).toBeUndefined();
-    expect(gigaRequest.messages).toHaveLength(2);
-    expect(gigaRequest.messages[0].role).toBe("system");
-    expect(gigaRequest.messages[0].content).toContain("Chain-of-Thought");
-  });
-
-  it("should translate thinking budget block by injecting a system instruction", async () => {
-    const openAiRequestMedium = {
-      messages: [{ role: "user", content: "Thinking test" }],
-      thinking: { budget_tokens: 512 }
-    };
-    const openAiRequestHigh = {
-      messages: [{ role: "user", content: "Thinking test" }],
-      thinking: { budget_tokens: 2048 }
-    };
-
-    const gigaRequestMedium = await translateOpenAiToGigaChat(openAiRequestMedium, "mock-token", true, "mock-ca");
-    expect(gigaRequestMedium.reasoning_effort).toBeUndefined();
-    expect(gigaRequestMedium.messages[0].content).toContain("Подумай пошагово");
-
-    const gigaRequestHigh = await translateOpenAiToGigaChat(openAiRequestHigh, "mock-token", true, "mock-ca");
-    expect(gigaRequestHigh.reasoning_effort).toBeUndefined();
-    expect(gigaRequestHigh.messages[0].content).toContain("Chain-of-Thought");
-  });
-
-  it("should map json_schema response format to GigaChat JSON schema", async () => {
-    const openAiRequest = {
-      messages: [{ role: "user", content: "JSON schema test" }],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          schema: {
-            type: "object",
-            properties: {
-              result: { type: "string" }
-            }
-          }
-        }
-      }
-    };
-
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", true, "mock-ca");
-    // GigaChat uses type "json_schema" (not "json") when a schema is provided
-    expect(gigaRequest.response_format.type).toBe("json_schema");
-    expect(gigaRequest.response_format.schema.type).toBe("object");
-    expect(gigaRequest.response_format.schema.properties.result.type).toBe("string");
-  });
-
-  it("should carry over tool usage history and map developer role", async () => {
-    const openAiRequest = {
-      messages: [
-        { role: "developer", content: "System directives" },
-        { role: "user", content: "Call a tool please" },
-        {
-          role: "assistant",
-          content: "",
-          tool_calls: [
-            {
-              id: "call_123",
-              type: "function",
-              function: { name: "get_weather", arguments: '{"location":"Moscow"}' }
-            }
-          ]
-        },
-        {
-          role: "tool",
-          tool_call_id: "call_123",
-          name: "get_weather",
-          content: '{"temp": 20}'
-        }
-      ]
-    };
-
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", true, "mock-ca");
-
-    expect(gigaRequest.messages).toHaveLength(4);
-    // Developer mapped to system
-    expect(gigaRequest.messages[0].role).toBe("system");
-    // Assistant message tool_calls carried over to function_call
-    expect(gigaRequest.messages[2].role).toBe("assistant");
-    expect(gigaRequest.messages[2].content).toBeNull();
-    expect(gigaRequest.messages[2].function_call).toBeDefined();
-    expect(gigaRequest.messages[2].function_call.name).toBe(getToolAlias("get_weather"));
-    // GigaChat v1 API requires arguments as an object (Map<String,Object>), not a JSON string
-    expect(gigaRequest.messages[2].function_call.arguments).toEqual({ location: "Moscow" });
-    // Tool message fields carried over
-    expect(gigaRequest.messages[3].role).toBe("function");
-    expect(gigaRequest.messages[3].name).toBe(getToolAlias("get_weather"));
-    expect(gigaRequest.messages[3].content).toBe('{"temp": 20}');
-  });
-
-  it("should carry over stop sequences and map object tool_choice", async () => {
-    const openAiRequest = {
-      messages: [{ role: "user", content: "Test stop and tool choice" }],
-      stop: ["\n", "###"],
-      tools: [
-        {
-          type: "function",
-          function: { name: "test_fn", parameters: {} }
-        }
-      ],
-      tool_choice: {
-        type: "function",
-        function: { name: "test_fn" }
-      }
-    };
-
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", true, "mock-ca");
-
-    expect(gigaRequest.stop).toEqual(["\n", "###"]);
-    // Object tool_choice mapped to function_call object
-    expect(gigaRequest.function_call).toEqual({ name: getToolAlias("test_fn") });
-  });
-
-  it("should remove nullable from nested JSON schemas sent to GigaChat", async () => {
-    const openAiRequest = {
-      messages: [{ role: "user", content: "Use a nullable schema" }],
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "nullable_tool",
-            parameters: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                maybeText: {
-                  type: "string",
-                  nullable: true
-                }
-              }
-            }
-          }
-        }
-      ]
-    };
-
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", true, "mock-ca");
-
-    expect(gigaRequest.functions[0].parameters.additionalProperties).toBeUndefined();
-    expect(gigaRequest.functions[0].parameters.properties.maybeText.nullable).toBeUndefined();
-  });
-
-  it("should merge multiple system/developer messages and place the merged message at index 0", async () => {
-    const openAiRequest = {
-      messages: [
-        { role: "user", content: "Hello" },
-        { role: "developer", content: "Instruction 1" },
-        { role: "user", content: "How are you?" },
-        { role: "system", content: "Instruction 2" }
-      ]
-    };
-
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", true, "mock-ca");
-
-    expect(gigaRequest.messages).toHaveLength(3); // 1 merged system, 2 user messages
-    expect(gigaRequest.messages[0]).toEqual({
-      role: "system",
-      content: "Instruction 1\nInstruction 2"
-    });
-    expect(gigaRequest.messages[1]).toEqual({
-      role: "user",
-      content: "Hello"
-    });
-    expect(gigaRequest.messages[2]).toEqual({
-      role: "user",
-      content: "How are you?"
-    });
-  });
-
-  it("should translate array content to flat string content and attachments list", async () => {
-    const mockPost = vi.spyOn(axios, "post").mockResolvedValue({
-      data: { id: "test-file-id" }
-    } as any);
-
-    const openAiRequest = {
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "text", text: "Analyze this image:" },
-            { type: "image_url", image_url: { url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" } }
-          ]
-        }
-      ]
-    };
-
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", false, "mock-ca");
-    expect(gigaRequest.messages).toHaveLength(1);
-    expect(gigaRequest.messages[0].role).toBe("user");
-    expect(gigaRequest.messages[0].content).toContain("Analyze this image:");
-    expect(gigaRequest.messages[0].attachments).toBeDefined();
-    expect(gigaRequest.messages[0].attachments).toEqual(["test-file-id"]);
-
-    mockPost.mockRestore();
-  });
-
-  it("should map reasoning_content from GigaChat response to OpenAI response structure", () => {
-    const sberResponse = {
-      id: "test-id",
-      model: "GigaChat-Max",
-      choices: [
-        {
-          index: 0,
-          message: {
-            role: "assistant",
-            content: "Response content",
-            reasoning_content: "Reasoning content"
-          },
-          finish_reason: "stop"
-        }
-      ]
-    };
-
-    const openAiResponse = translateGigaChatToOpenAi(sberResponse);
-    expect(openAiResponse.choices[0].message.reasoning_content).toBe("Reasoning content");
-  });
-
-  it("should inject authorization headers and mTLS agent in request options", () => {
-    const options: any = { headers: {} };
-    const transformed = transformRequestOptions(options, "test-jwt", true, "nonexistent-ca.pem");
-
-    expect(transformed.headers.Authorization).toBe("Bearer test-jwt");
-    expect(transformed.headers.RqUID).toBeDefined();
-    expect(transformed.httpsAgent).toBeDefined();
-    const firstCert = BUILTIN_CA_BUNDLE.split("-----END CERTIFICATE-----")[0] + "-----END CERTIFICATE-----";
-    expect(transformed.httpsAgent.options.ca).toContain(firstCert);
-  });
-});
+import {
+  setupGlobalFetchInterceptor,
+  registerGigaEndpoint,
+  getToolAlias,
+} from "./request.js";
 
 describe("Global Fetch Interceptor", () => {
-  let originalFetch: any;
+  let originalFetch: typeof fetch;
   const mockAuthManager = {
     getAccessToken: async () => ({
       token: "mock-token",
-      account: { name: "Test Account" }
+      account: {
+        id: "test-account",
+        name: "Test Account",
+        credentials: "test-credentials",
+        scope: "GIGACHAT_API_PERS" as const,
+      },
     }),
     getVerifySsl: () => true,
-    getCaBundle: () => "mock-ca"
-  } as any;
+    getCaBundle: () => "mock-ca",
+    blockActiveAccount: vi.fn(),
+  };
 
   beforeEach(() => {
     originalFetch = globalThis.fetch;
@@ -313,7 +41,7 @@ describe("Global Fetch Interceptor", () => {
 
     await globalThis.fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      body: JSON.stringify({ model: "gpt-4" })
+      body: JSON.stringify({ model: "gpt-4" }),
     });
 
     expect(mockFetch).toHaveBeenCalled();
@@ -326,10 +54,13 @@ describe("Global Fetch Interceptor", () => {
 
     setupGlobalFetchInterceptor(mockAuthManager);
 
-    await globalThis.fetch("https://example.com/proxy?target=api.gigachat.local/v1/chat/completions", {
-      method: "POST",
-      body: JSON.stringify({ model: "GigaChat-Max" })
-    });
+    await globalThis.fetch(
+      "https://example.com/proxy?target=api.gigachat.local/v1/chat/completions",
+      {
+        method: "POST",
+        body: JSON.stringify({ model: "GigaChat-Max" }),
+      },
+    );
 
     expect(mockFetch).toHaveBeenCalled();
     expect(mockAxiosPost).not.toHaveBeenCalled();
@@ -338,32 +69,36 @@ describe("Global Fetch Interceptor", () => {
   it("should intercept requests with x-opencode-provider-marker header and strip it", async () => {
     const mockAxiosPost = vi.spyOn(axios, "post").mockResolvedValue({
       data: {
-        choices: [
-          { message: { content: "test" } }
-        ]
-      }
+        choices: [{ message: { content: "test" } }],
+      },
     } as any);
 
     setupGlobalFetchInterceptor(mockAuthManager);
 
     const headers: Record<string, string> = {
       "x-opencode-provider-marker": "gigacode",
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
     };
 
-    const response = await globalThis.fetch("https://my-custom-proxy.com/chat/completions", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        model: "GigaChat-Max",
-        messages: [{ role: "user", content: "test" }]
-      })
-    });
+    const response = await globalThis.fetch(
+      "https://my-custom-proxy.com/chat/completions",
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: "GigaChat-Max",
+          messages: [{ role: "user", content: "test" }],
+        }),
+      },
+    );
 
     expect(mockAxiosPost).toHaveBeenCalled();
-    // Verify that the marker header was stripped from the original object
-    expect(headers["x-opencode-provider-marker"]).toBeUndefined();
-    
+    // Fetch must preserve caller-owned headers while stripping its internal marker upstream.
+    expect(headers["x-opencode-provider-marker"]).toBe("gigacode");
+    expect(
+      mockAxiosPost.mock.calls[0]?.[2]?.headers?.["x-opencode-provider-marker"],
+    ).toBeUndefined();
+
     const responseJson = await response.json();
     expect(responseJson.choices[0].message.content).toBe("test");
   });
@@ -371,23 +106,24 @@ describe("Global Fetch Interceptor", () => {
   it("should intercept requests to registered custom base URLs", async () => {
     const mockAxiosPost = vi.spyOn(axios, "post").mockResolvedValue({
       data: {
-        choices: [
-          { message: { content: "custom proxy" } }
-        ]
-      }
+        choices: [{ message: { content: "custom proxy" } }],
+      },
     } as any);
 
     registerGigaEndpoint("https://my-company-sber-proxy.ru/v1");
     setupGlobalFetchInterceptor(mockAuthManager);
 
-    const response = await globalThis.fetch("https://my-company-sber-proxy.ru/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "GigaChat-Max",
-        messages: [{ role: "user", content: "test" }]
-      })
-    });
+    const response = await globalThis.fetch(
+      "https://my-company-sber-proxy.ru/v1/chat/completions",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "GigaChat-Max",
+          messages: [{ role: "user", content: "test" }],
+        }),
+      },
+    );
 
     expect(mockAxiosPost).toHaveBeenCalled();
     const responseJson = await response.json();
@@ -407,13 +143,13 @@ describe("Global Fetch Interceptor", () => {
               role: "assistant",
               function_call: {
                 name: alias,
-                arguments: { value: "one" }
+                arguments: { value: "one" },
               },
-              functions_state_id: "state-1"
+              functions_state_id: "state-1",
             },
-            finish_reason: null
-          }
-        ]
+            finish_reason: null,
+          },
+        ],
       })}\n\n`,
       `data: ${JSON.stringify({
         id: "chunk-2",
@@ -424,31 +160,34 @@ describe("Global Fetch Interceptor", () => {
             delta: {
               function_call: {
                 name: alias,
-                arguments: { value: "two" }
-              }
+                arguments: { value: "two" },
+              },
             },
-            finish_reason: "function_call"
-          }
-        ]
+            finish_reason: "function_call",
+          },
+        ],
       })}\n\n`,
-      "data: [DONE]\n\n"
+      "data: [DONE]\n\n",
     ]);
 
     vi.spyOn(axios, "post").mockResolvedValue({
-      data: stream
+      data: stream,
     } as any);
 
     setupGlobalFetchInterceptor(mockAuthManager);
 
-    const response = await globalThis.fetch("https://api.gigachat.local/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: "GigaChat-Max",
-        stream: true,
-        messages: [{ role: "user", content: "stream a tool call" }]
-      })
-    });
+    const response = await globalThis.fetch(
+      "https://api.gigachat.local/v1/chat/completions",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "GigaChat-Max",
+          stream: true,
+          messages: [{ role: "user", content: "stream a tool call" }],
+        }),
+      },
+    );
 
     const text = await response.text();
     const jsonLines = text
@@ -464,36 +203,285 @@ describe("Global Fetch Interceptor", () => {
     expect(jsonLines[1].choices[0].finish_reason).toBe("tool_calls");
   });
 
-  it("should ensure function/tool messages serialize their content as valid JSON strings", async () => {
-    const openAiRequest = {
-      model: "GigaChat-Max",
-      messages: [
-        { role: "user", content: "Hi" },
-        { role: "assistant", content: "", tool_calls: [{ id: "call_123", type: "function", function: { name: "test_tool", arguments: "{}" } }] },
-        { role: "tool", tool_call_id: "call_123", content: "some text content" }
-      ]
-    };
+  it.each(["record", "Headers", "pairs"])(
+    "recognizes marker headers supplied as %s",
+    async (kind) => {
+      const entries: [string, string][] = [
+        ["X-OpenCode-Provider-Marker", "gigachat"],
+        ["Content-Type", "application/json"],
+      ];
+      const headers =
+        kind === "Headers"
+          ? new Headers(entries)
+          : kind === "pairs"
+            ? entries
+            : Object.fromEntries(entries);
+      const post = vi.spyOn(axios, "post").mockResolvedValue({
+        data: { choices: [{ message: { content: "ok" } }] },
+      });
+      setupGlobalFetchInterceptor(mockAuthManager);
+      const response = await fetch(
+        "https://marker-fixture.invalid/chat/completions",
+        {
+          method: "POST",
+          headers,
+          body: "{}",
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(post).toHaveBeenCalledOnce();
+      expect(new Headers(headers).has("x-opencode-provider-marker")).toBe(true);
+    },
+  );
 
-    const gigaRequest = await translateOpenAiToGigaChat(openAiRequest, "mock-token", true, "mock-ca");
-    
-    // The assistant message content should be null since it has tool_calls
-    expect(gigaRequest.messages[1].content).toBeNull();
-    // The tool message should be translated to a function message with name, and content should be serialized to a valid JSON string
-    expect(gigaRequest.messages[2].role).toBe("function");
-    expect(gigaRequest.messages[2].name).toBe(getToolAlias("test_tool"));
-    expect(gigaRequest.messages[2].content).toBe(JSON.stringify("some text content"));
+  it("reads a Request body without consuming the original request", async () => {
+    const post = vi.spyOn(axios, "post").mockResolvedValue({
+      data: { choices: [{ message: { content: "ok" } }] },
+    });
+    const request = new Request(
+      "https://api.gigachat.local/v1/chat/completions",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "GigaChat",
+          messages: [{ role: "user", content: "request body" }],
+        }),
+      },
+    );
+    setupGlobalFetchInterceptor(mockAuthManager);
+    await fetch(request);
+    expect(post.mock.calls[0]?.[1]).toMatchObject({
+      messages: [{ role: "user", content: "request body" }],
+    });
+    expect(request.bodyUsed).toBe(false);
+    expect(await request.text()).toContain("request body");
+  });
 
-    // If the tool output is already a valid JSON string, it should be kept as-is
-    const openAiRequestJson = {
-      model: "GigaChat-Max",
-      messages: [
-        { role: "user", content: "Hi" },
-        { role: "assistant", content: "", tool_calls: [{ id: "call_123", type: "function", function: { name: "test_tool", arguments: "{}" } }] },
-        { role: "tool", tool_call_id: "call_123", content: '{"result":"success"}' }
-      ]
-    };
+  it.each([403, 429])(
+    "preserves HTTP %s and reports quota failures without exposing credentials",
+    async (status) => {
+      const error = new AxiosError(
+        "Request failed",
+        "ERR_BAD_RESPONSE",
+        {
+          headers: new AxiosHeaders({ Authorization: "Basic secret-key" }),
+        },
+        undefined,
+        {
+          status,
+          statusText: "Rejected",
+          headers: {},
+          config: { headers: new AxiosHeaders() },
+          data: Buffer.from(JSON.stringify({ message: "quota exhausted" })),
+        },
+      );
+      vi.spyOn(axios, "post").mockRejectedValue(error);
+      setupGlobalFetchInterceptor(mockAuthManager);
+      const response = await fetch(
+        "https://api.gigachat.local/v1/chat/completions",
+        {
+          method: "POST",
+          body: "{}",
+        },
+      );
+      const text = await response.text();
+      expect(response.status).toBe(status);
+      expect(text).toContain("quota exhausted");
+      expect(text).not.toContain("secret-key");
+      expect(error.config?.headers.has("authorization")).toBe(false);
+      expect(mockAuthManager.blockActiveAccount).toHaveBeenCalled();
+    },
+  );
 
-    const gigaRequestJson = await translateOpenAiToGigaChat(openAiRequestJson, "mock-token", true, "mock-ca");
-    expect(gigaRequestJson.messages[2].content).toBe('{"result":"success"}');
+  it("allows frozen marker headers to be reused and forwards custom client headers", async () => {
+    const post = vi
+      .spyOn(axios, "post")
+      .mockResolvedValue({ data: { choices: [] } });
+    const headers = Object.freeze({
+      "X-OpenCode-Provider-Marker": "gigachat",
+      "X-Client-ID": "client-id",
+      Authorization: "ignored-client-token",
+    });
+    setupGlobalFetchInterceptor(mockAuthManager);
+    for (let i = 0; i < 2; i++) {
+      const response = await fetch(
+        "https://reused-headers.invalid/chat/completions",
+        {
+          method: "POST",
+          headers,
+          body: new Blob(["{}"]),
+        },
+      );
+      expect(response.status).toBe(200);
+    }
+    expect(post).toHaveBeenCalledTimes(2);
+    const forwarded = post.mock.calls[0]?.[2]?.headers;
+    expect(forwarded?.["x-client-id"]).toBe("client-id");
+    expect(forwarded?.Authorization).toBe("Bearer mock-token");
+    expect(forwarded?.["x-opencode-provider-marker"]).toBeUndefined();
+  });
+
+  it("preserves binary Request bodies and replaces Request headers with init headers", async () => {
+    const bytes = new Uint8Array([0, 128, 255, 42]);
+    const proxy = vi.spyOn(axios, "request").mockResolvedValue({
+      data: bytes,
+      status: 200,
+      headers: { "content-type": "application/octet-stream" },
+    });
+    const request = new Request("https://api.gigachat.local/v1/files", {
+      method: "POST",
+      body: bytes,
+      headers: { "X-Original": "drop" },
+    });
+    setupGlobalFetchInterceptor(mockAuthManager);
+    const response = await fetch(request, {
+      headers: { "X-Override": "keep" },
+    });
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+    const config = proxy.mock.calls[0]?.[0];
+    expect(config?.data).toEqual(Buffer.from(bytes));
+    expect(config?.headers?.["x-original"]).toBeUndefined();
+    expect(config?.headers?.["x-override"]).toBe("keep");
+    expect(request.bodyUsed).toBe(false);
+  });
+
+  it("returns a valid empty HEAD response", async () => {
+    vi.spyOn(axios, "request").mockResolvedValue({
+      data: Buffer.alloc(0),
+      status: 200,
+      headers: {},
+    });
+    setupGlobalFetchInterceptor(mockAuthManager);
+    const response = await fetch("https://api.gigachat.local/v1/models", {
+      method: "HEAD",
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toBeNull();
+  });
+
+  it("rejects pre-aborted requests without starting OAuth", async () => {
+    const token = vi.spyOn(mockAuthManager, "getAccessToken");
+    setupGlobalFetchInterceptor(mockAuthManager);
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      fetch("https://api.gigachat.local/v1/models", {
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(token).not.toHaveBeenCalled();
+  });
+
+  it("aborts a caller waiting for shared OAuth without canceling the other caller", async () => {
+    let resolveToken!: (
+      value: Awaited<ReturnType<typeof mockAuthManager.getAccessToken>>,
+    ) => void;
+    const shared = new Promise<
+      Awaited<ReturnType<typeof mockAuthManager.getAccessToken>>
+    >((resolve) => {
+      resolveToken = resolve;
+    });
+    vi.spyOn(mockAuthManager, "getAccessToken").mockReturnValue(shared);
+    const post = vi
+      .spyOn(axios, "post")
+      .mockResolvedValue({ data: { choices: [] } });
+    setupGlobalFetchInterceptor(mockAuthManager);
+    const controller = new AbortController();
+    const aborted = fetch("https://api.gigachat.local/v1/chat/completions", {
+      method: "POST",
+      body: "{}",
+      signal: controller.signal,
+    });
+    const surviving = fetch("https://api.gigachat.local/v1/chat/completions", {
+      method: "POST",
+      body: "{}",
+    });
+    controller.abort();
+    await expect(aborted).rejects.toMatchObject({ name: "AbortError" });
+    resolveToken({
+      token: "shared-token",
+      account: {
+        id: "test",
+        name: "test",
+        credentials: "test",
+        scope: "GIGACHAT_API_PERS",
+      },
+    });
+    expect((await surviving).status).toBe(200);
+    expect(post).toHaveBeenCalledOnce();
+  });
+
+  it("forwards cancellation to HTTP requests", async () => {
+    const controller = new AbortController();
+    const post = vi
+      .spyOn(axios, "post")
+      .mockImplementation(async (_url, _body, config) => {
+        expect(config?.signal).toBe(controller.signal);
+        controller.abort();
+        throw new Error("Axios canceled");
+      });
+    setupGlobalFetchInterceptor(mockAuthManager);
+    await expect(
+      fetch("https://api.gigachat.local/v1/chat/completions", {
+        method: "POST",
+        body: "{}",
+        signal: controller.signal,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    expect(post).toHaveBeenCalledOnce();
+  });
+
+  it("uploads images through the chat endpoint's proxy and does not send chat after upload failure", async () => {
+    const controller = new AbortController();
+    const post = vi.spyOn(axios, "post").mockRejectedValue(
+      new AxiosError(
+        "Upload rejected",
+        "ERR_BAD_RESPONSE",
+        undefined,
+        undefined,
+        {
+          status: 403,
+          statusText: "Forbidden",
+          headers: {},
+          data: {},
+          config: { headers: new AxiosHeaders() },
+        },
+      ),
+    );
+    setupGlobalFetchInterceptor(mockAuthManager);
+    const response = await fetch(
+      "https://image-proxy.invalid/api/v1/chat/completions/",
+      {
+        method: "POST",
+        headers: {
+          "x-opencode-provider-marker": "gigachat",
+          "X-Client-ID": "client",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "image_url",
+                  image_url: { url: "data:image/png;base64,aW1hZ2U=" },
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    );
+    expect(response.status).toBe(403);
+    expect(post).toHaveBeenCalledOnce();
+    expect(post.mock.calls[0]?.[0]).toBe(
+      "https://image-proxy.invalid/api/v1/files",
+    );
+    const config = post.mock.calls[0]?.[2];
+    expect(config?.signal).toBe(controller.signal);
+    expect(config?.headers?.["x-client-id"]).toBe("client");
+    expect(config?.headers?.["content-type"]).toMatch(/^multipart\/form-data/);
   });
 });
