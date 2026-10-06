@@ -22,9 +22,9 @@
 Рекомендуемый формат: `gigachat-plugin.zip`. Архив содержит отдельные модули и готовые зависимости.
 
 > Релиз `v1.0.0` содержит неполный JS-файл из трёх строк.
-> Используйте релиз с ZIP-архивом или соберите текущие исходники по инструкции ниже.
+> Используйте `v1.0.1` или новее.
 
-1. Скачайте `gigachat-plugin.zip` из [GitHub Releases](https://github.com/Overman775/opencode-gigachat-plugin/releases).
+1. Скачайте `gigachat-plugin.zip` из [релиза v1.0.1](https://github.com/Overman775/opencode-gigachat-plugin/releases/tag/v1.0.1).
 2. Закройте OpenCode.
 3. Откройте терминал в папке со скачанным архивом.
 4. Создайте папку плагинов:

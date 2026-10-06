@@ -22,9 +22,9 @@ You need OpenCode to install the plugin. You need Node.js 18 or later to build i
 Use `gigachat-plugin.zip`. The archive contains separate modules and bundled dependencies.
 
 > The published `v1.0.0` release contains an incomplete three-line JS file.
-> Use a release with the ZIP asset, or build the current sources below.
+> Use `v1.0.1` or later.
 
-1. Download `gigachat-plugin.zip` from [GitHub Releases](https://github.com/Overman775/opencode-gigachat-plugin/releases).
+1. Download `gigachat-plugin.zip` from [release v1.0.1](https://github.com/Overman775/opencode-gigachat-plugin/releases/tag/v1.0.1).
 2. Close OpenCode.
 3. Open a terminal in the directory that contains the archive.
 4. Create the plugins directory:
