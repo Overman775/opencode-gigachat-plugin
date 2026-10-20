@@ -238,6 +238,41 @@ describe("GigaChat Request Translator", () => {
     expect(gigaRequest.messages[3].content).toBe('{"temp": 20}');
   });
 
+  it("synthesizes an assistant function_call before an orphaned function result", async () => {
+    // opencode can send a tool result without a preceding assistant function_call
+    // in long sessions (e.g. after compaction). GigaChat rejects this with 422
+    // ("every function result must have an assistant function call in history"),
+    // so the plugin must synthesize a matching assistant message.
+    const openAiRequest = {
+      messages: [
+        { role: "user", content: "hi" },
+        {
+          role: "tool",
+          tool_call_id: "call_orphan",
+          name: "bash",
+          content: '{"output":"ok"}',
+        },
+      ],
+    };
+
+    const gigaRequest = await translateOpenAiToGigaChat(
+      openAiRequest,
+      "mock-token",
+      true,
+      "mock-ca",
+    );
+
+    expect(gigaRequest.messages).toHaveLength(3);
+    // user -> synthesized assistant -> function
+    expect(gigaRequest.messages[0].role).toBe("user");
+    expect(gigaRequest.messages[1].role).toBe("assistant");
+    expect(gigaRequest.messages[1].function_call).toBeDefined();
+    expect(gigaRequest.messages[1].function_call.name).toBe(
+      getToolAlias("bash"),
+    );
+    expect(gigaRequest.messages[2].role).toBe("function");
+  });
+
   it("should carry over stop sequences and map object tool_choice", async () => {
     const openAiRequest = {
       messages: [{ role: "user", content: "Test stop and tool choice" }],

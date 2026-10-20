@@ -56,6 +56,30 @@ export async function translateMessages(
     });
   }
 
+  // GigaChat requires every "function" result in the history to be immediately
+  // preceded by an "assistant" message with a function_call. opencode can send
+  // orphaned tool results in long sessions (e.g. after compaction or when the
+  // assistant produced text between tool calls), which the API rejects with 422
+  // ("every function result must have an assistant function call in history").
+  // Track whether the last appended message is an assistant carrying a
+  // function_call, and synthesize a matching assistant message when needed.
+  let lastGigaIsFunctionCallAssistant = false;
+  function pushFunctionResultPaired(gigaMsg: any, resolvedName: string | undefined) {
+    if (!lastGigaIsFunctionCallAssistant) {
+      const syntheticName = resolvedName || "tool_call";
+      gigaMessages.push({
+        role: "assistant",
+        content: null,
+        function_call: {
+          name: syntheticName,
+          arguments: {},
+        },
+      });
+    }
+    gigaMessages.push(gigaMsg);
+    lastGigaIsFunctionCallAssistant = false;
+  }
+
   // 5. Translate and append non-system messages.
   //
   // Pre-pass: build a map of tool_call_id -> function_name from assistant messages.
@@ -168,11 +192,13 @@ export async function translateMessages(
           msg.tool_calls[0].function?.arguments,
         ),
       };
+      lastGigaIsFunctionCallAssistant = true;
     } else if (msg.function_call) {
       gigaMsg.function_call = {
         name: getToolAlias(msg.function_call.name),
         arguments: parseArgumentsToObject(msg.function_call.arguments),
       };
+      lastGigaIsFunctionCallAssistant = true;
     }
 
     // --- functions_state_id passthrough ---
@@ -196,7 +222,23 @@ export async function translateMessages(
       gigaMsg.name = getToolAlias(msg.name);
     }
 
-    gigaMessages.push(gigaMsg);
+    // --- Append, guaranteeing assistant/function pairing ---
+    if (msg.role === "tool" || msg.role === "function") {
+      pushFunctionResultPaired(
+        gigaMsg,
+        gigaMsg.name ||
+          (msg.tool_call_id
+            ? getToolAlias(toolCallIdToName.get(msg.tool_call_id))
+            : undefined),
+      );
+    } else {
+      gigaMessages.push(gigaMsg);
+      if (msg.role === "assistant") {
+        lastGigaIsFunctionCallAssistant = !!gigaMsg.function_call;
+      } else {
+        lastGigaIsFunctionCallAssistant = false;
+      }
+    }
   }
 
   return gigaMessages;
