@@ -40,6 +40,10 @@ export function sanitizeFunctionParameters(params: any): any {
     )
       continue;
     const val = params[key];
+    // GigaChat API only accepts format "date", "date-time" or "time".
+    // Other JSON Schema formats (e.g. "uri" used by webfetch) cause 422.
+    if (key === "format" && !["date", "date-time", "time"].includes(val))
+      continue;
     if (key === "properties" && val !== null && typeof val === "object") {
       out[key] = {};
       for (const propKey of Object.keys(val)) {

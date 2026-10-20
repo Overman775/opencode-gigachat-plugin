@@ -22,6 +22,28 @@ describe("GigaChat Request Translator", () => {
     expect(stringifyArguments(null)).toBe("{}");
   });
 
+  it("drops unsupported JSON Schema format values (422 guard) but keeps date/time", () => {
+    expect(
+      sanitizeFunctionParameters({
+        type: "object",
+        properties: {
+          url: { type: "string", format: "uri" },
+          created: { type: "string", format: "date-time" },
+          day: { type: "string", format: "date" },
+          clock: { type: "string", format: "time" },
+        },
+      }),
+    ).toEqual({
+      type: "object",
+      properties: {
+        url: { type: "string" },
+        created: { type: "string", format: "date-time" },
+        day: { type: "string", format: "date" },
+        clock: { type: "string", format: "time" },
+      },
+    });
+  });
+
   it("rejects an upload response without a usable file ID", async () => {
     const post = vi.spyOn(axios, "post").mockResolvedValue({ data: {} });
     try {
