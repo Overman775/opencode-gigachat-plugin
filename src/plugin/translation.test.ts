@@ -52,7 +52,7 @@ describe("GigaChat Request Translator", () => {
 
   it("should translate basic OpenAI chat completion request to GigaChat format", async () => {
     const openAiRequest = {
-      model: "GigaChat-Max",
+      model: "GigaChat-2-Max",
       messages: [{ role: "user", content: "Hello world" }],
       temperature: 0.8,
       stream: true,
@@ -66,7 +66,7 @@ describe("GigaChat Request Translator", () => {
       "mock-ca",
     );
 
-    expect(gigaRequest.model).toBe("GigaChat-Max");
+    expect(gigaRequest.model).toBe("GigaChat-2-Max");
     expect(gigaRequest.messages).toHaveLength(1);
     expect(gigaRequest.messages[0]).toEqual({
       role: "user",
@@ -77,7 +77,7 @@ describe("GigaChat Request Translator", () => {
     expect(gigaRequest.max_tokens).toBe(512);
   });
 
-  it("should fall back to GigaChat-Max model name if undefined", async () => {
+  it("should fall back to GigaChat-2-Max model name if undefined", async () => {
     const openAiRequest = {
       messages: [{ role: "user", content: "Test model name fallback" }],
     };
@@ -88,7 +88,7 @@ describe("GigaChat Request Translator", () => {
       true,
       "mock-ca",
     );
-    expect(gigaRequest.model).toBe("GigaChat-Max");
+    expect(gigaRequest.model).toBe("GigaChat-2-Max");
   });
 
   it("should map GigaChat-2-Lite model to GigaChat-2", async () => {
@@ -106,7 +106,7 @@ describe("GigaChat Request Translator", () => {
     expect(gigaRequest.model).toBe("GigaChat-2");
   });
 
-  it("should translate reasoning_effort parameter by injecting a system instruction", async () => {
+  it("passes reasoning_effort natively when no tools are attached", async () => {
     const openAiRequest = {
       messages: [{ role: "user", content: "Thinking test" }],
       reasoning_effort: "HIGH",
@@ -118,13 +118,39 @@ describe("GigaChat Request Translator", () => {
       true,
       "mock-ca",
     );
+    expect(gigaRequest.reasoning_effort).toBe("high");
+    expect(gigaRequest.messages).toHaveLength(1);
+    expect(gigaRequest.messages[0].role).toBe("user");
+  });
+
+  it("keeps the system instruction when tools force the fallback", async () => {
+    const openAiRequest = {
+      messages: [{ role: "user", content: "Thinking test" }],
+      reasoning_effort: "high",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "read",
+            description: "read a file",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+      ],
+    };
+
+    const gigaRequest = await translateOpenAiToGigaChat(
+      openAiRequest,
+      "mock-token",
+      true,
+      "mock-ca",
+    );
     expect(gigaRequest.reasoning_effort).toBeUndefined();
-    expect(gigaRequest.messages).toHaveLength(2);
     expect(gigaRequest.messages[0].role).toBe("system");
     expect(gigaRequest.messages[0].content).toContain("Chain-of-Thought");
   });
 
-  it("should translate thinking budget block by injecting a system instruction", async () => {
+  it("should translate thinking budget block to a native flag", async () => {
     const openAiRequestMedium = {
       messages: [{ role: "user", content: "Thinking test" }],
       thinking: { budget_tokens: 512 },
@@ -140,8 +166,7 @@ describe("GigaChat Request Translator", () => {
       true,
       "mock-ca",
     );
-    expect(gigaRequestMedium.reasoning_effort).toBeUndefined();
-    expect(gigaRequestMedium.messages[0].content).toContain("Подумай пошагово");
+    expect(gigaRequestMedium.reasoning_effort).toBe("medium");
 
     const gigaRequestHigh = await translateOpenAiToGigaChat(
       openAiRequestHigh,
@@ -149,8 +174,7 @@ describe("GigaChat Request Translator", () => {
       true,
       "mock-ca",
     );
-    expect(gigaRequestHigh.reasoning_effort).toBeUndefined();
-    expect(gigaRequestHigh.messages[0].content).toContain("Chain-of-Thought");
+    expect(gigaRequestHigh.reasoning_effort).toBe("high");
   });
 
   it("should map json_schema response format to GigaChat JSON schema", async () => {
@@ -378,7 +402,7 @@ describe("GigaChat Request Translator", () => {
   it("should map reasoning_content from GigaChat response to OpenAI response structure", () => {
     const sberResponse = {
       id: "test-id",
-      model: "GigaChat-Max",
+      model: "GigaChat-2-Max",
       choices: [
         {
           index: 0,
@@ -417,7 +441,7 @@ describe("GigaChat Request Translator", () => {
   });
   it("should ensure function/tool messages serialize their content as valid JSON strings", async () => {
     const openAiRequest = {
-      model: "GigaChat-Max",
+      model: "GigaChat-2-Max",
       messages: [
         { role: "user", content: "Hi" },
         {
@@ -457,7 +481,7 @@ describe("GigaChat Request Translator", () => {
 
     // If the tool output is already a valid JSON string, it should be kept as-is
     const openAiRequestJson = {
-      model: "GigaChat-Max",
+      model: "GigaChat-2-Max",
       messages: [
         { role: "user", content: "Hi" },
         {
@@ -486,5 +510,65 @@ describe("GigaChat Request Translator", () => {
       "mock-ca",
     );
     expect(gigaRequestJson.messages[2].content).toBe('{"result":"success"}');
+  });
+
+  it("should split parallel tool calls into call/result pairs", async () => {
+    const openAiRequest = {
+      messages: [
+        { role: "user", content: "Read two files" },
+        {
+          role: "assistant",
+          content: "Reading both",
+          tool_calls: [
+            {
+              id: "call_a",
+              type: "function",
+              function: { name: "read_file", arguments: '{"path":"a.txt"}' },
+            },
+            {
+              id: "call_b",
+              type: "function",
+              function: { name: "read_file", arguments: '{"path":"b.txt"}' },
+            },
+          ],
+        },
+        { role: "tool", tool_call_id: "call_a", content: "A" },
+        { role: "tool", tool_call_id: "call_b", content: "B" },
+        { role: "user", content: "Thanks" },
+      ],
+    };
+
+    const gigaRequest = await translateOpenAiToGigaChat(
+      openAiRequest,
+      "mock-token",
+      true,
+      "mock-ca",
+    );
+
+    // Every function result must follow its own assistant function call.
+    expect(gigaRequest.messages).toHaveLength(6);
+    expect(gigaRequest.messages[0].role).toBe("user");
+    expect(gigaRequest.messages[1].role).toBe("assistant");
+    expect(gigaRequest.messages[1].content).toBe("Reading both");
+    expect(gigaRequest.messages[1].function_call.name).toBe(
+      getToolAlias("read_file"),
+    );
+    expect(gigaRequest.messages[1].function_call.arguments).toEqual({
+      path: "a.txt",
+    });
+    expect(gigaRequest.messages[2].role).toBe("function");
+    expect(gigaRequest.messages[2].name).toBe(getToolAlias("read_file"));
+    expect(gigaRequest.messages[2].content).toBe(JSON.stringify("A"));
+    expect(gigaRequest.messages[3].role).toBe("assistant");
+    expect(gigaRequest.messages[3].content).toBeNull();
+    expect(gigaRequest.messages[3].function_call.name).toBe(
+      getToolAlias("read_file"),
+    );
+    expect(gigaRequest.messages[3].function_call.arguments).toEqual({
+      path: "b.txt",
+    });
+    expect(gigaRequest.messages[4].role).toBe("function");
+    expect(gigaRequest.messages[4].content).toBe(JSON.stringify("B"));
+    expect(gigaRequest.messages[5].role).toBe("user");
   });
 });

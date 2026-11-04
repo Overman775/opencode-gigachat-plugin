@@ -3,6 +3,9 @@
 Начните с [установки в README](../README.md#установка-и-сборка).
 После установки OpenCode загружает плагин из папки `plugins`.
 
+Для OpenCode 2.x эта инструкция не подходит: провайдера объявляет сам плагин, а запись `GigaChat (Sberbank)` из конфигурации нужно удалить.
+См. [V2](V2.md).
+
 ## Файл конфигурации
 
 Глобальный файл: `~/.config/opencode/opencode.json`.
@@ -25,55 +28,40 @@ OpenCode также поддерживает конфиг в папке прое
         "verifySSL": true
       },
       "models": {
-        "GigaChat": {
-          "name": "GigaChat Classic (Text)",
-          "limit": { "context": 32000, "output": 4096 },
-          "modalities": { "input": ["text"], "output": ["text"] }
-        },
         "GigaChat-2": {
           "name": "GigaChat 2 (Text)",
           "limit": { "context": 128000, "output": 4096 },
           "modalities": { "input": ["text"], "output": ["text"] }
         },
-        "GigaChat-2-Lite": {
-          "name": "GigaChat 2 Lite (Alias)",
-          "limit": { "context": 128000, "output": 4096 },
-          "modalities": { "input": ["text"], "output": ["text"] }
-        },
-        "GigaChat-Plus": {
-          "name": "GigaChat Plus (Text)",
-          "limit": { "context": 128000, "output": 8192 },
-          "modalities": { "input": ["text"], "output": ["text"] }
-        },
-        "GigaChat-Pro": {
-          "name": "GigaChat Pro (Multimodal)",
-          "limit": { "context": 128000, "output": 8192 },
-          "modalities": { "input": ["text", "image"], "output": ["text"] }
-        },
         "GigaChat-2-Pro": {
           "name": "GigaChat 2 Pro (Multimodal)",
           "limit": { "context": 128000, "output": 8192 },
-          "modalities": { "input": ["text", "image"], "output": ["text"] }
-        },
-        "GigaChat-Max": {
-          "name": "GigaChat Max (Multimodal)",
-          "limit": { "context": 128000, "output": 8192 },
-          "modalities": { "input": ["text", "image"], "output": ["text"] },
-          "variants": {
-            "low": { "reasoning_effort": "low" },
-            "medium": { "reasoning_effort": "medium" },
-            "high": { "reasoning_effort": "high" }
-          }
+          "modalities": { "input": ["text", "image", "audio"], "output": ["text"] }
         },
         "GigaChat-2-Max": {
           "name": "GigaChat 2 Max (Reasoning)",
           "limit": { "context": 128000, "output": 8192 },
-          "modalities": { "input": ["text", "image"], "output": ["text"] },
+          "modalities": { "input": ["text", "image", "audio"], "output": ["text"] },
           "variants": {
             "low": { "reasoning_effort": "low" },
             "medium": { "reasoning_effort": "medium" },
             "high": { "reasoning_effort": "high" }
           }
+        },
+        "GigaChat-3-Lightning": {
+          "name": "GigaChat 3 Lightning (Fast)",
+          "limit": { "context": 128000, "output": 8192 },
+          "modalities": { "input": ["text"], "output": ["text"] }
+        },
+        "GigaChat-3-Pro": {
+          "name": "GigaChat 3 Pro (Multimodal)",
+          "limit": { "context": 128000, "output": 8192 },
+          "modalities": { "input": ["text", "image", "audio"], "output": ["text"] }
+        },
+        "GigaChat-3-Ultra": {
+          "name": "GigaChat 3 Ultra (Flagship)",
+          "limit": { "context": 128000, "output": 8192 },
+          "modalities": { "input": ["text", "image", "audio"], "output": ["text"] }
         }
       }
     }

@@ -1,9 +1,24 @@
 # Модели и параметры рассуждений
 
-Плагин преобразует параметры OpenAI `reasoning_effort` и `thinking` в системные инструкции GigaChat.
-В этой интеграции используется API v1. Плагин не отправляет эти параметры как отдельные поля API.
+Плагин поддерживает два режима для `reasoning_effort` и `thinking`.
 
-## Как выбирается инструкция
+* **Без инструментов** плагин передаёт флаг в GigaChat нативно. Цепочка рассуждений возвращается в `reasoning_content` и передаётся клиенту.
+* **С инструментами** нативный флаг использовать нельзя: GigaChat отвечает `500`, если в запросе одновременно есть `functions` и `reasoning_effort`. В этом режиме плагин добавляет системную инструкцию.
+
+## Нативный режим
+
+| Параметр запроса | Поле запроса GigaChat |
+| --- | --- |
+| `reasoning_effort: "high"` | `reasoning_effort: "high"` |
+| `reasoning_effort: "medium"` | `reasoning_effort: "medium"` |
+| `reasoning_effort: "low"` | `reasoning_effort: "low"` |
+| `reasoning_effort: "minimal"` | `reasoning_effort: "low"` |
+| `thinking.budget_tokens > 1024` | `reasoning_effort: "high"` |
+| `thinking.budget_tokens <= 1024` | `reasoning_effort: "medium"` |
+
+Если запрос содержит оба параметра, плагин использует `reasoning_effort`.
+
+## Режим с инструментами
 
 | Параметр запроса | Действие плагина |
 | --- | --- |
@@ -13,8 +28,7 @@
 | `thinking.budget_tokens > 1024` | Выбирает подробный анализ |
 | `thinking.budget_tokens <= 1024` | Выбирает пошаговое рассуждение |
 
-Если запрос содержит оба параметра, плагин использует `reasoning_effort`.
-Он добавляет инструкцию к сообщению `system`.
+Инструкция добавляется к сообщению `system`.
 Если системного сообщения нет, плагин создаёт его.
 
 Тексты инструкций из кода:
@@ -29,10 +43,13 @@ medium:
 
 Это текстовые инструкции. Плагин не задаёт модели обязательный бюджет вычислений.
 
+Агентские сессии OpenCode всегда передают инструменты, поэтому используют второй режим.
+Первый режим включается в обычном чате без инструментов.
+
 ## Варианты в конфиге
 
 1. Откройте `opencode.json`.
-2. Добавьте `variants` к модели `GigaChat-Max` в разделе `provider["GigaChat (Sberbank)"].models`.
+2. Добавьте `variants` к модели `GigaChat-2-Max` в разделе `provider["GigaChat (Sberbank)"].models`.
 
 Пример записи модели:
 
@@ -51,7 +68,7 @@ medium:
 3. Запустите модель с вариантом `max`:
 
    ```bash
-   opencode run "Напиши сложный алгоритм сортировки" --model "GigaChat (Sberbank)/GigaChat-Max" --variant=max
+   opencode run "Напиши сложный алгоритм сортировки" --model "GigaChat (Sberbank)/GigaChat-2-Max" --variant=max
    ```
 
 Вариант `max` задаёт `reasoning_effort: "high"`.
@@ -61,7 +78,7 @@ medium:
 ## Поле рассуждений в ответе
 
 Если GigaChat возвращает `reasoning_content`, плагин сохраняет его в ответе для клиента.
-Это относится и к ответам `GigaChat-Max` и `GigaChat-2-Max`, описанным в этом репозитории.
+Это относится к ответам `GigaChat-2-Max`, описанной в этом репозитории как модель с рассуждениями.
 
 | Режим | Поле ответа |
 | --- | --- |

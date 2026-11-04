@@ -3,6 +3,29 @@ import { logger } from "../gigacode/logger.js";
 import type { AttachmentOptions } from "./attachments.js";
 import { uploadBase64File } from "./attachments.js";
 import { getToolAlias, parseArgumentsToObject } from "./tools.js";
+
+/** Maps the short audio format used by OpenAI clients to a MIME type. */
+function audioMimeType(format: string): string {
+  switch (format.toLowerCase()) {
+    case "mp3":
+      return "audio/mpeg";
+    case "ogg":
+    case "oga":
+      return "audio/ogg";
+    case "webm":
+      return "audio/webm";
+    case "flac":
+      return "audio/flac";
+    case "m4a":
+    case "mp4":
+      return "audio/mp4";
+    case "aac":
+      return "audio/aac";
+    default:
+      return `audio/${format.toLowerCase()}`;
+  }
+}
+
 export async function translateMessages(
   messages: any[],
   systemInstruction: string,
@@ -72,7 +95,7 @@ export async function translateMessages(
     }
   }
 
-  for (const msg of nonSystemMessages) {
+  const translateMessage = async (msg: any): Promise<any> => {
     const gigaMsg: any = { role: msg.role };
 
     // --- Content handling ---
@@ -140,6 +163,29 @@ export async function translateMessages(
             if (textContent) textContent += "\n";
             textContent += `[Image URL: ${urlStr}]`;
           }
+        } else if (part.type === "input_audio" || part.type === "audio") {
+          const audio = part.input_audio ?? part.audio ?? {};
+          const data = typeof audio.data === "string" ? audio.data : "";
+          if (!data) continue;
+          const format = typeof audio.format === "string" && audio.format ? audio.format : "wav";
+          const dataUrl = data.startsWith("data:")
+            ? data
+            : `data:${audioMimeType(format)};base64,${data}`;
+          try {
+            logger.log("Intercepted base64 audio. Uploading to GigaChat files...");
+            const fileId = await uploadBase64File(
+              dataUrl,
+              token,
+              verifySsl,
+              caBundle,
+              options,
+            );
+            attachments.push(fileId);
+          } catch (err: unknown) {
+            const error = sanitizeError(err);
+            logger.error("Failed to upload message audio:", error.message);
+            throw error;
+          }
         }
       }
       gigaMsg.content = textContent || (hasFunctionCall ? null : "");
@@ -196,7 +242,60 @@ export async function translateMessages(
       gigaMsg.name = getToolAlias(msg.name);
     }
 
-    gigaMessages.push(gigaMsg);
+    return gigaMsg;
+  };
+
+  for (let index = 0; index < nonSystemMessages.length; index += 1) {
+    const msg = nonSystemMessages[index];
+    const calls: any[] = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+
+    // GigaChat keeps one function_call per assistant message and demands an
+    // assistant call for every function result, so parallel OpenAI tool calls
+    // are split into call/result pairs.
+    if (msg.role === "assistant" && calls.length > 1) {
+      const pending = new Map<string, any[]>();
+      let cursor = index + 1;
+      while (
+        cursor < nonSystemMessages.length &&
+        (nonSystemMessages[cursor].role === "tool" ||
+          nonSystemMessages[cursor].role === "function")
+      ) {
+        const result = nonSystemMessages[cursor];
+        const key = String(result.tool_call_id ?? result.name ?? "");
+        const bucket = pending.get(key) ?? [];
+        bucket.push(result);
+        pending.set(key, bucket);
+        cursor += 1;
+      }
+
+      for (const [callIndex, call] of calls.entries()) {
+        const id = String(call.id ?? "");
+        const single =
+          callIndex === 0
+            ? { ...msg, tool_calls: [call] }
+            : {
+                ...msg,
+                content: null,
+                tool_calls: [call],
+                functions_state_id: undefined,
+              };
+        gigaMessages.push(await translateMessage(single));
+        for (const result of pending.get(id) ?? []) {
+          gigaMessages.push(await translateMessage(result));
+        }
+        pending.delete(id);
+      }
+      // Results that match no call in this message keep their original order.
+      for (const leftover of pending.values()) {
+        for (const result of leftover) {
+          gigaMessages.push(await translateMessage(result));
+        }
+      }
+      index = cursor - 1;
+      continue;
+    }
+
+    gigaMessages.push(await translateMessage(msg));
   }
 
   return gigaMessages;

@@ -33,7 +33,7 @@
 
 ```json
 {
-  "model": "GigaChat-Max",
+  "model": "GigaChat-2-Max",
   "messages": [
     {
       "role": "user",
@@ -66,7 +66,7 @@
   "id": "chatcmp-uuid",
   "object": "chat.completion",
   "created": 1717616800,
-  "model": "GigaChat-Max",
+  "model": "GigaChat-2-Max",
   "choices": [
     {
       "index": 0,
@@ -91,9 +91,9 @@
 События содержат строки `data:`. Пустая строка завершает событие.
 
 ```text
-data: {"id":"chatcmp-uuid","created":1717616800,"model":"GigaChat-Max","choices":[{"index":0,"delta":{"role":"assistant","content":"Привет"},"finish_reason":null}]}
+data: {"id":"chatcmp-uuid","created":1717616800,"model":"GigaChat-2-Max","choices":[{"index":0,"delta":{"role":"assistant","content":"Привет"},"finish_reason":null}]}
 
-data: {"id":"chatcmp-uuid","created":1717616800,"model":"GigaChat-Max","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":null}]}
+data: {"id":"chatcmp-uuid","created":1717616800,"model":"GigaChat-2-Max","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":null}]}
 
 data: [DONE]
 ```

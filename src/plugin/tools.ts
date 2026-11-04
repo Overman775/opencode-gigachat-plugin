@@ -24,7 +24,9 @@ export function getOriginalToolName(alias: string | undefined | null): string {
 
 /**
  * Sanitize a JSON Schema object for GigaChat compatibility.
- * GigaChat rejects: additionalProperties, $schema, nullable (use anyOf instead).
+ * GigaChat rejects: additionalProperties, $schema, nullable (use anyOf instead),
+ * format, and `type` arrays such as ["string", "null"] — there it expects one
+ * string value, so a union is collapsed to its first non-null member.
  * Arguments within function_call must be sent as objects, not JSON strings.
  */
 export function sanitizeFunctionParameters(params: any): any {
@@ -36,10 +38,18 @@ export function sanitizeFunctionParameters(params: any): any {
     if (
       key === "additionalProperties" ||
       key === "$schema" ||
-      key === "nullable"
+      key === "nullable" ||
+      key === "format"
     )
       continue;
     const val = params[key];
+    if (key === "type" && Array.isArray(val)) {
+      const first = val.find(
+        (item: any) => typeof item === "string" && item !== "null",
+      );
+      out[key] = first ?? "string";
+      continue;
+    }
     if (key === "properties" && val !== null && typeof val === "object") {
       out[key] = {};
       for (const propKey of Object.keys(val)) {

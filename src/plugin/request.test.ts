@@ -58,7 +58,7 @@ describe("Global Fetch Interceptor", () => {
       "https://example.com/proxy?target=api.gigachat.local/v1/chat/completions",
       {
         method: "POST",
-        body: JSON.stringify({ model: "GigaChat-Max" }),
+        body: JSON.stringify({ model: "GigaChat-2-Max" }),
       },
     );
 
@@ -86,7 +86,7 @@ describe("Global Fetch Interceptor", () => {
         method: "POST",
         headers,
         body: JSON.stringify({
-          model: "GigaChat-Max",
+          model: "GigaChat-2-Max",
           messages: [{ role: "user", content: "test" }],
         }),
       },
@@ -119,7 +119,7 @@ describe("Global Fetch Interceptor", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "GigaChat-Max",
+          model: "GigaChat-2-Max",
           messages: [{ role: "user", content: "test" }],
         }),
       },
@@ -135,7 +135,7 @@ describe("Global Fetch Interceptor", () => {
     const stream = Readable.from([
       `data: ${JSON.stringify({
         id: "chunk-1",
-        model: "GigaChat-Max",
+        model: "GigaChat-2-Max",
         choices: [
           {
             index: 0,
@@ -153,7 +153,7 @@ describe("Global Fetch Interceptor", () => {
       })}\n\n`,
       `data: ${JSON.stringify({
         id: "chunk-2",
-        model: "GigaChat-Max",
+        model: "GigaChat-2-Max",
         choices: [
           {
             index: 0,
@@ -182,7 +182,7 @@ describe("Global Fetch Interceptor", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "GigaChat-Max",
+          model: "GigaChat-2-Max",
           stream: true,
           messages: [{ role: "user", content: "stream a tool call" }],
         }),

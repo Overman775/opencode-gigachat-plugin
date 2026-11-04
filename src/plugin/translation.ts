@@ -7,7 +7,7 @@ export async function translateOpenAiToGigaChat(
   caBundle: string,
   options: AttachmentOptions = {},
 ): Promise<any> {
-  let modelName = openAiBody.model || "GigaChat-Max";
+  let modelName = openAiBody.model || "GigaChat-2-Max";
   if (modelName === "GigaChat-2-Lite") {
     modelName = "GigaChat-2";
   }
@@ -30,12 +30,31 @@ export async function translateOpenAiToGigaChat(
       openAiBody.thinking.budget_tokens > 1024 ? "high" : "medium";
   }
 
-  const cotPrompt =
-    reasoningLevel === "high"
-      ? "\n[Системное руководство: Проанализируй задачу очень подробно, составь детальный пошаговый план решения и проведи глубокие рассуждения (Chain-of-Thought) перед тем, как выдать финальный ответ.]"
-      : reasoningLevel === "medium"
-        ? "\n[Системное руководство: Подумай пошагово перед тем, как выдать итоговый ответ.]"
-        : "";
+  // 2. Map Tools & Functions FIRST (before response_format, since they conflict)
+  const hasTools =
+    (openAiBody.tools &&
+      Array.isArray(openAiBody.tools) &&
+      openAiBody.tools.length > 0) ||
+    (openAiBody.functions &&
+      Array.isArray(openAiBody.functions) &&
+      openAiBody.functions.length > 0);
+
+  // GigaChat accepts `reasoning_effort` natively, but only without functions:
+  // a request with both answers HTTP 500. Agent sessions always send tools, so
+  // they keep the system-instruction fallback, while plain chats get the real
+  // flag (the API returns the chain in `reasoning_content`).
+  const nativeReasoning = reasoningLevel !== null && !hasTools;
+  let cotPrompt = "";
+  if (nativeReasoning) {
+    gigaBody.reasoning_effort =
+      reasoningLevel === "minimal" ? "low" : reasoningLevel;
+  } else if (reasoningLevel === "high") {
+    cotPrompt =
+      "\n[Системное руководство: Проанализируй задачу очень подробно, составь детальный пошаговый план решения и проведи глубокие рассуждения (Chain-of-Thought) перед тем, как выдать финальный ответ.]";
+  } else if (reasoningLevel === "medium") {
+    cotPrompt =
+      "\n[Системное руководство: Подумай пошагово перед тем, как выдать итоговый ответ.]";
+  }
 
   gigaBody.messages = await translateMessages(
     openAiBody.messages || [],
@@ -45,15 +64,6 @@ export async function translateOpenAiToGigaChat(
     caBundle,
     options,
   );
-
-  // 2. Map Tools & Functions FIRST (before response_format, since they conflict)
-  const hasTools =
-    (openAiBody.tools &&
-      Array.isArray(openAiBody.tools) &&
-      openAiBody.tools.length > 0) ||
-    (openAiBody.functions &&
-      Array.isArray(openAiBody.functions) &&
-      openAiBody.functions.length > 0);
 
   if (openAiBody.tools && Array.isArray(openAiBody.tools)) {
     gigaBody.functions = openAiBody.tools.map((t: any) => ({

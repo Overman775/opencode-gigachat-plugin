@@ -6,16 +6,21 @@ Guidance for AI agents working with this repository.
 
 OpenCode plugin for GigaChat / GigaCode API. Intercepts fetch() calls to `api.gigachat.local` and `ngw.devices.sberbank.ru`, transforms them to Sberbank GigaChat format, and handles auth, Vision uploads, SSL/mTLS verification, quota recovery, and multi-account rotation.
 
+OpenCode 2.x does not route provider traffic through `globalThis.fetch`, so this repository also ships a V2 transport in `src/v2/`: the plugin starts a local HTTP endpoint and registers a `gigachat` provider that points at it. Both layers share the translation, streaming, tool and upload modules. See `docs/V2.md` and the V2 section of `docs/ARCHITECTURE.md`.
+
 ---
 
 ## Build & Test Commands
 
 ```bash
 npm install                                     # Install dependencies
-npm run build                                   # Compile (tsc)
+npm run build                                   # Compile (tsc), includes src/v2
 npm run watch                                   # Watch mode for auto-compilation
 npm test                                        # Run all tests (vitest run)
+npm run build:release                           # V1 standalone file (dist/gigachat-plugin.js)
+npm run build:release:v2                        # V2 standalone file (dist/gigachat-plugin-v2.js)
 npx vitest run src/plugin/request.test.ts       # Single test file
+npx vitest run src/v2/endpoint.test.ts          # V2 transport tests
 npx vitest run -t "should translate"            # Single test by name
 npx vitest --watch src/plugin/request.test.ts   # Watch mode, single file
 ```

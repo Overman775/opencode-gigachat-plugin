@@ -233,4 +233,74 @@ describe("GigaCodeAuthManager", () => {
     expect((await oldCaller).token).toBe("new-token");
     expect((await manager.getAccessToken()).token).toBe("new-token");
   });
+
+  describe("account rotation", () => {
+    it("splits several credentials into accounts and rotates on quota errors", () => {
+      const manager = new GigaCodeAuthManager();
+      manager.setCredentials("key-a;key-b\nkey-c", "GIGACHAT_API_B2B");
+
+      expect(manager.getAccounts()).toHaveLength(3);
+      expect(manager.getActiveAccount()?.credentials).toBe("key-a");
+      expect(manager.getActiveAccount()?.scope).toBe("GIGACHAT_API_B2B");
+
+      expect(manager.rotateAccount("HTTP 429")).toBe(true);
+      expect(manager.getActiveAccount()?.credentials).toBe("key-b");
+    });
+
+    it("does not rotate when only one account is configured", () => {
+      const manager = new GigaCodeAuthManager();
+      manager.setCredentials("only-key");
+      expect(manager.rotateAccount("HTTP 429")).toBe(false);
+      expect(manager.getActiveAccount()?.credentials).toBe("only-key");
+    });
+
+    it("keeps a token per account and reuses the cache after a full cycle", async () => {
+      const manager = new GigaCodeAuthManager();
+      manager.setCredentials("key-a;key-b");
+      vi.mocked(axios.post)
+        .mockResolvedValueOnce({
+          data: { access_token: "token-a", expires_at: Date.now() + 3600000 },
+        })
+        .mockResolvedValueOnce({
+          data: { access_token: "token-b", expires_at: Date.now() + 3600000 },
+        });
+
+      expect((await manager.getAccessToken()).token).toBe("token-a");
+      manager.rotateAccount("HTTP 429");
+      expect((await manager.getAccessToken()).token).toBe("token-b");
+      manager.rotateAccount("HTTP 429");
+
+      // The first account is cooling down, but its token is still cached.
+      expect((await manager.getAccessToken()).token).toBe("token-a");
+      expect(axios.post).toHaveBeenCalledTimes(2);
+    });
+
+    it("falls back to the least recently blocked account when all are cooling down", () => {
+      const manager = new GigaCodeAuthManager();
+      manager.setCredentials("key-a;key-b;key-c");
+
+      expect(manager.rotateAccount("HTTP 429")).toBe(true);
+      expect(manager.getActiveAccount()?.credentials).toBe("key-b");
+      expect(manager.rotateAccount("HTTP 429")).toBe(true);
+      expect(manager.getActiveAccount()?.credentials).toBe("key-c");
+      // Every account was blocked by the previous rotations, so rotation
+      // restarts the cycle instead of failing the request.
+      expect(manager.rotateAccount("HTTP 429")).toBe(true);
+      expect(manager.getActiveAccount()?.credentials).toBe("key-a");
+    });
+
+    it("accepts explicit account entries with per-account scopes", () => {
+      const manager = new GigaCodeAuthManager();
+      manager.setAccounts([
+        { credentials: "a", scope: "GIGACHAT_API_PERS" },
+        { credentials: "b", scope: "GIGACHAT_API_CORP" },
+      ]);
+
+      expect(manager.getAccounts().map((account) => account.scope)).toEqual([
+        "GIGACHAT_API_PERS",
+        "GIGACHAT_API_CORP",
+      ]);
+      expect(manager.getAccounts().map((account) => account.credentials)).toEqual(["a", "b"]);
+    });
+  });
 });

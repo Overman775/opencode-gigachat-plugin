@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { getOriginalToolName, stringifyArguments } from "./tools.js";
+import {
+  extractTextToolCalls,
+  recoveredToolCall,
+} from "./text-tool-calls.js";
 export function translateStreamChunk(
   sberJson: any,
   streamToolCallIds: Map<string, string>,
@@ -12,7 +16,7 @@ export function translateStreamChunk(
     id: sberJson.id || fallback.id,
     object: "chat.completion.chunk",
     created: sberJson.created ?? fallback.created,
-    model: sberJson.model || "GigaChat-Max",
+    model: sberJson.model || "GigaChat-2-Max",
     choices: (sberJson.choices || []).map((c: any) => {
       const delta: any = {
         role: c.delta?.role,
@@ -108,6 +112,15 @@ export function translateGigaChatToOpenAi(sberResponse: any): any {
       } else if (c.message?.tool_calls) {
         choice.message.tool_calls = c.message.tool_calls;
         choice.finish_reason = "tool_calls";
+      } else if (typeof choice.message.content === "string") {
+        // The model may write a tool call out as text (it imitates the
+        // `[Assistant tool call]:` lines from compacted history). Recover it.
+        const recovered = extractTextToolCalls(choice.message.content);
+        if (recovered.calls.length > 0) {
+          choice.message.content = recovered.text;
+          choice.message.tool_calls = recovered.calls.map(recoveredToolCall);
+          choice.finish_reason = "tool_calls";
+        }
       }
 
       return choice;

@@ -13,6 +13,44 @@
 Плагин поддерживает текст, вызовы инструментов, потоковые ответы и загрузку изображений.
 Он получает OAuth-токен и проверяет TLS-сертификаты при запросах к Сберу.
 
+## OpenCode 2.x
+
+В OpenCode 2 запросы провайдеров не проходят через `globalThis.fetch`, поэтому перехватчик V1 там не работает.
+Для 2.x используется отдельная сборка — `gigachat-plugin-v2.js`: плагин поднимает локальный эндпоинт на `127.0.0.1:45731` и регистрирует провайдера `gigachat`, через которого работают модели GigaChat-2 и GigaChat-3.
+
+1. Скопируйте `gigachat-plugin-v2.js` из [релизов](../../releases) в папку плагинов:
+
+   ```bash
+   cp gigachat-plugin-v2.js "$HOME/.config/opencode/plugins/gigachat-plugin-v2.js"
+   ```
+
+2. Объявите провайдера в `~/.config/opencode/opencode.json`. Без этой записи не будет методов входа:
+
+   ```json
+   {
+     "providers": {
+       "gigachat": {
+         "name": "GigaChat (Sberbank)",
+         "package": "@opencode/ai/providers/openai-compatible",
+         "settings": { "baseURL": "http://127.0.0.1:45731/v1" },
+         "models": {
+           "GigaChat-3-Pro": {
+             "name": "GigaChat 3 Pro (Multimodal)",
+             "limit": { "context": 128000, "output": 8192 },
+             "capabilities": { "tools": true, "input": ["text", "image", "audio"], "output": ["text"] }
+           }
+         }
+       }
+     }
+   }
+   ```
+
+3. Задайте ключ через `/connect` → `GigaChat (Sberbank)` или `opencode auth login gigachat`.
+
+Полный список моделей, переменные окружения и ограничения — в [docs/V2.md](docs/V2.md).
+
+Инструкции ниже относятся к OpenCode 1.x.
+
 ## Установка и сборка
 
 Для установки нужен OpenCode и готовый файл `gigachat-plugin.js`.
@@ -137,6 +175,7 @@ OpenCode сохранит ключ и scope в своём хранилище а�
 Исходники в `src/` разделены на модули.
 Готовый файл генерируется без минификации и содержит пути исходных модулей.
 Для сборки из исходников нужен Node.js 18 или новее.
+Для запуска тестов нужен Node.js 20.19 или новее: этого требуют Vitest 4 и Vite 8.
 
 ### Сборка из исходников
 
@@ -188,8 +227,11 @@ OpenCode сохранит ключ и scope в своём хранилище а�
 - Плагин преобразует параметры `reasoning_effort` и `thinking` в системные инструкции. Подробнее: [параметры рассуждений](docs/MODEL-VARIANTS.md).
 - При размере отдельной текстовой части сообщения больше 400 КБ плагин выводит предупреждение. Он не уменьшает эту часть автоматически.
 
-Идентификаторы моделей: `GigaChat`, `GigaChat-2`, `GigaChat-2-Lite`, `GigaChat-Plus`, `GigaChat-Pro`, `GigaChat-2-Pro`, `GigaChat-Max`, `GigaChat-2-Max`.
-Плагин заменяет `GigaChat-2-Lite` на `GigaChat-2`.
+Идентификаторы моделей: `GigaChat-2`, `GigaChat-2-Pro`, `GigaChat-2-Max`, `GigaChat-3-Lightning`, `GigaChat-3-Pro`, `GigaChat-3-Ultra`.
+Старые идентификаторы без цифры поколения Сбер больше не обслуживает.
+Имя `GigaChat-2-Lite` плагин заменяет на `GigaChat-2`, но отдельной моделью не показывает.
+Инструменты работают у всех шести моделей; изображения и аудио принимают `GigaChat-2-Pro`, `GigaChat-2-Max`, `GigaChat-3-Pro` и `GigaChat-3-Ultra`, а `GigaChat-3-Lightning` — только текст.
+Плагин также регистрирует инструмент `gigachat_generate_image` для генерации картинок и умеет ротировать несколько ключей при ошибках квоты.
 
 Лимиты контекста, ответа и поддержку изображений задавайте по [примеру конфигурации](docs/CONFIGURATION.md).
 Для параметров рассуждений используйте [варианты моделей](docs/MODEL-VARIANTS.md).
@@ -230,6 +272,7 @@ rm "$HOME/.config/opencode/certs/root.crt" "$HOME/.config/opencode/certs/sub.crt
 
 ## Документация
 
+- [OpenCode 2.x](docs/V2.md): локальный эндпоинт, провайдер `gigachat`, ключи и ограничения.
 - [Конфигурация](docs/CONFIGURATION.md): параметры провайдера, модели и способы входа.
 - [Параметры рассуждений](docs/MODEL-VARIANTS.md): варианты модели и поля ответа.
 - [Ошибки](docs/TROUBLESHOOTING.md): причины и действия для проверки.

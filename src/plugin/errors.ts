@@ -46,6 +46,14 @@ async function readErrorBody(body: unknown): Promise<string> {
   return typeof body === "string" ? body : (JSON.stringify(body) ?? "");
 }
 
+/** Short explanations for statuses whose bare code says nothing to the user. */
+const STATUS_HINTS: Record<number, string> = {
+  401: "the access token was rejected, check the credentials",
+  402: "the current GigaChat tariff does not include this operation",
+  403: "quota or billing is exhausted for this account",
+  429: "rate limit exceeded, retry later or add another account",
+};
+
 export async function createErrorResponse(
   error: unknown,
   onQuotaError: (reason: string) => void,
@@ -68,10 +76,14 @@ export async function createErrorResponse(
   logger.error("Interception translation failed:", cleanError.message);
   if (status === 429) onQuotaError("HTTP 429 Rate Limited");
   if (status === 403) onQuotaError("HTTP 403 Quota/Billing Exhausted");
+  if (status === 401) onQuotaError("HTTP 401 Unauthorized");
+  const details = [serverMessage, STATUS_HINTS[status]].filter(
+    (part): part is string => typeof part === "string" && part.length > 0,
+  );
   return Response.json(
     {
       error: {
-        message: `GigaChat Translation Proxy Error: ${cleanError.message}${serverMessage ? ` (${serverMessage})` : ""}`,
+        message: `GigaChat Translation Proxy Error: ${cleanError.message}${details.length ? ` (${details.join("; ")})` : ""}`,
         type: "api_error",
         code: status,
       },

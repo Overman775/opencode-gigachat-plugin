@@ -37,6 +37,14 @@ export async function uploadBase64File(
   let ext = "png";
   if (mimeType.includes("jpeg")) ext = "jpg";
   else if (mimeType.includes("webp")) ext = "webp";
+  else if (mimeType.includes("gif")) ext = "gif";
+  else if (mimeType.includes("mpeg") || mimeType.includes("mp3")) ext = "mp3";
+  else if (mimeType.includes("wav")) ext = "wav";
+  else if (mimeType.includes("ogg")) ext = "ogg";
+  else if (mimeType.includes("webm")) ext = "webm";
+  else if (mimeType.includes("flac")) ext = "flac";
+  else if (mimeType.includes("mp4") || mimeType.includes("m4a")) ext = "m4a";
+  else if (mimeType.includes("aac")) ext = "aac";
 
   const tempFileName = `upload_${Date.now()}.${ext}`;
 
